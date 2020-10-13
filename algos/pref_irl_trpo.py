@@ -4,6 +4,7 @@ from garage.torch.algos import TRPO
 from garage.torch import pad_to_last, filter_valids
 from garage.np import discount_cumsum
 from garage import StepType, EpisodeBatch
+from garage.torch.optimizers import OptimizerWrapper
 from dowel import tabular
 
 import torch
@@ -51,9 +52,10 @@ class PreferenceTRPO(TRPO):
                  policy,
                  value_function,
                  reward_predictor,
-                 path_buffer,
+                 comparison_buffer,
                  policy_optimizer=None,
                  vf_optimizer=None,
+                 reward_predictor_optimizer=None,
                  num_train_per_epoch=1,
                  discount=0.99,
                  gae_lambda=0.98,
@@ -79,8 +81,15 @@ class PreferenceTRPO(TRPO):
                          stop_entropy_gradient=stop_entropy_gradient,
                          entropy_method=entropy_method)
 
-        self.reward_predictor = reward_predictor
-        self.path_buffer = path_buffer
+        self._reward_predictor = reward_predictor
+        self.comparison_buffer = comparison_buffer
+
+        if reward_predictor_optimizer:
+            self._reward_predictor_optimizer = reward_predictor_optimizer
+        else:
+            self._reward_predictor_optimizer = OptimizerWrapper(
+                torch.optim.Adam,
+                self._reward_predictor)
 
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
@@ -93,16 +102,50 @@ class PreferenceTRPO(TRPO):
         """
         last_return = None
 
+        self.pretrain_reward_predictor(trainer)
+
         for _ in trainer.step_epochs():
             for _ in range(self._n_samples):
                 eps = trainer.obtain_episodes(trainer.step_itr)
-                self.path_buffer.add_episode_batch(eps)
+                self.comparison_buffer.add_episode_batch(trainer.step_itr, eps)
+                while self.comparison_buffer.requires_more_comparisons(trainer.step_itr):
+                    self.comparison_buffer.sample_comparison()
+                    self.comparison_buffer.label_unlabeled_comparisons()
                 trainer.step_path = self._predict_rewards(eps.to_list())
                 last_return = self._train_once(trainer.step_itr,
                                                trainer.step_path)
                 trainer.step_itr += 1
 
         return last_return
+
+    def _train(self,
+               obs,
+               actions,
+               rewards,
+               returns,
+               advs,
+               left_segs,
+               right_segs,
+               prefs):
+        r"""Train the policy and value function with minibatch.
+        Args:
+            obs (torch.Tensor): Observation from the environment with shape
+                :math:`(N, O*)`.
+            actions (torch.Tensor): Actions fed to the environment with shape
+                :math:`(N, A*)`.
+            rewards (torch.Tensor): Acquired rewards with shape :math:`(N, )`.
+            returns (torch.Tensor): Acquired returns with shape :math:`(N, )`.
+            advs (torch.Tensor): Advantage value at each step with shape
+                :math:`(N, )`.
+        """
+        for dataset in self._reward_predictor_optimizer.get_minibatch(
+                left_segs, right_segs, prefs):
+            self._train_reward_predictor(*dataset)
+        for dataset in self._policy_optimizer.get_minibatch(
+                obs, actions, rewards, advs):
+            self._train_policy(*dataset)
+        for dataset in self._vf_optimizer.get_minibatch(obs, returns):
+            self._train_value_function(*dataset)
 
     def _train_once(self, itr, paths):
         """Train the algorithm once.
@@ -125,7 +168,28 @@ class PreferenceTRPO(TRPO):
         returns_flat = torch.cat(filter_valids(returns, valids))
         advs_flat = self._compute_advantage(rewards, valids, baselines)
 
+        labeled_comparisons = (
+            self.comparison_buffer.labeled_decisive_comparisons
+        )
+
+        left_segs = torch.tensor(
+            [comp['left']['observations'] for comp in labeled_comparisons]
+        ).type(torch.float32)
+
+        right_segs = torch.tensor(
+            [comp['right']['observations'] for comp in labeled_comparisons]
+        ).type(torch.float32)
+
+        preferences = torch.tensor(
+            [comp['label'] for comp in labeled_comparisons]
+        ).type(torch.long)
+
         with torch.no_grad():
+            reward_predictor_loss_before = (
+                self._reward_predictor.compute_preference_loss(left_segs,
+                                                               right_segs,
+                                                               preferences)
+            )
             policy_loss_before = self._compute_loss_with_adv(
                 obs_flat, actions_flat, rewards_flat, advs_flat)
             vf_loss_before = self._value_function.compute_loss(
@@ -133,9 +197,14 @@ class PreferenceTRPO(TRPO):
             kl_before = self._compute_kl_constraint(obs)
 
         self._train(obs_flat, actions_flat, rewards_flat, returns_flat,
-                    advs_flat)
+                    advs_flat, left_segs, right_segs, preferences)
 
         with torch.no_grad():
+            reward_predictor_loss_after = (
+                self._reward_predictor.compute_preference_loss(left_segs,
+                                                               right_segs,
+                                                               preferences)
+            )
             policy_loss_after = self._compute_loss_with_adv(
                 obs_flat, actions_flat, rewards_flat, advs_flat)
             vf_loss_after = self._value_function.compute_loss(
@@ -158,7 +227,18 @@ class PreferenceTRPO(TRPO):
             tabular.record('/dLoss',
                            vf_loss_before.item() - vf_loss_after.item())
 
-        tabular.record('BufferSize', self.path_buffer.n_transitions_stored)
+        with tabular.prefix(self._reward_predictor.name):
+            tabular.record('/LossBefore', reward_predictor_loss_before.item())
+            tabular.record('/LossAfter', reward_predictor_loss_after.item())
+            tabular.record('/dLoss',
+                           reward_predictor_loss_before.item() -
+                           reward_predictor_loss_after.item())
+
+        tabular.record('BufferSize',
+                       self.comparison_buffer.n_transitions_stored)
+
+        tabular.record('NumberOfComparisons',
+                       self.comparison_buffer.num_comparisons)
 
         self._old_policy.load_state_dict(self.policy.state_dict())
 
@@ -170,6 +250,59 @@ class PreferenceTRPO(TRPO):
         )
         return np.mean(undiscounted_returns)
 
+    def _train_reward_predictor(self, left_segs, right_segs, prefs):
+        r"""Train the reward predictor.
+        Args:
+            left_segs (torch.Tensor): Observation from the environment
+                with shape :math:`(N, O*)`.
+            right_segs (torch.Tensor): Observation from the environment
+                with shape :math:`(N, O*)`.
+            prefs (torch.Tensor): Acquired returns
+                with shape :math:`(N, )`.
+        Returns:
+            torch.Tensor: Calculated mean scalar value of value function loss
+                (float).
+        """
+        self._reward_predictor_optimizer.zero_grad()
+        loss = self._reward_predictor.compute_preference_loss(left_segs,
+                                                              right_segs,
+                                                              prefs)
+        loss.backward()
+        self._vf_optimizer.step()
+
+        return loss
+
+    def pretrain_reward_predictor(self, trainer):
+        while (self.comparison_buffer.n_transitions_stored <
+               (self.comparison_buffer._capacity * 0.8)):
+            eps = trainer.obtain_episodes(0)
+            self.comparison_buffer.add_episode_batch(0, eps)
+
+        while self.comparison_buffer.requires_more_comparisons(0):
+            self.comparison_buffer.sample_comparison()
+            self.comparison_buffer.label_unlabeled_comparisons()
+
+        labeled_comparisons = (
+            self.comparison_buffer.labeled_decisive_comparisons
+        )
+
+        left_segs = torch.tensor(
+            [comp['left']['observations'] for comp in labeled_comparisons]
+        ).type(torch.float32)
+
+        right_segs = torch.tensor(
+            [comp['right']['observations'] for comp in labeled_comparisons]
+        ).type(torch.float32)
+
+        preferences = torch.tensor(
+            [comp['label'] for comp in labeled_comparisons]
+        ).type(torch.long)
+
+        for _ in range(200):
+            for dataset in self._reward_predictor_optimizer.get_minibatch(
+                    left_segs, right_segs, preferences):
+                self._train_reward_predictor(*dataset)
+
     def _predict_rewards(self, paths):
         """Predicts rewards using reward predictor and attaches predictions
         to paths
@@ -180,7 +313,7 @@ class PreferenceTRPO(TRPO):
         ).type(torch.float32)
 
         with torch.no_grad():
-            predicted_rewards = self.reward_predictor(obs).flatten().numpy()
+            predicted_rewards = self._reward_predictor(obs).flatten().numpy()
 
         start = 0
         for path in paths:
