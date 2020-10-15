@@ -268,7 +268,7 @@ class PreferenceTRPO(TRPO):
                                                               right_segs,
                                                               prefs)
         loss.backward()
-        self._vf_optimizer.step()
+        self._reward_predictor_optimizer.step()
 
         return loss
 
@@ -318,8 +318,8 @@ class PreferenceTRPO(TRPO):
         start = 0
         for path in paths:
             N = len(path['observations'])
-            # path['predicted_rewards'] = predicted_rewards[start:start+N]
-            path['predicted_rewards'] = path['env_infos']['gt_reward']
+            path['predicted_rewards'] = predicted_rewards[start:start+N]
+            # path['predicted_rewards'] = path['env_infos']['gt_reward']
             start += N
 
         return paths

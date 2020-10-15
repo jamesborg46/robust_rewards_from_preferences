@@ -65,7 +65,7 @@ def trpo_pendulum(ctxt=None, seed=1):
     )
 
     label_scheduler = LabelAnnealer(final_timesteps=n_epochs,
-                                    final_labels=800,
+                                    final_labels=1600,
                                     pretrain_labels=200)
 
     comparison_buffer = ComparisonBuffer(20000, label_scheduler)
