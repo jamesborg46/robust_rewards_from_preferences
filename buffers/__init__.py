@@ -1,1 +1,1 @@
-from buffers.buffer import ComparisonBuffer, LabelAnnealer
+from buffers.comparison_collector import SyntheticComparisonCollector, HumanComparisonCollector, LabelAnnealer

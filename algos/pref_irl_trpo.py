@@ -5,10 +5,11 @@ from garage.torch import pad_to_last, filter_valids
 from garage.np import discount_cumsum
 from garage import StepType, EpisodeBatch
 from garage.torch.optimizers import OptimizerWrapper
-from dowel import tabular
+from dowel import tabular, logger
 
 import torch
 import numpy as np
+import time
 
 
 class PreferenceTRPO(TRPO):
@@ -52,7 +53,7 @@ class PreferenceTRPO(TRPO):
                  policy,
                  value_function,
                  reward_predictor,
-                 comparison_buffer,
+                 comparison_collector,
                  policy_optimizer=None,
                  vf_optimizer=None,
                  reward_predictor_optimizer=None,
@@ -82,7 +83,7 @@ class PreferenceTRPO(TRPO):
                          entropy_method=entropy_method)
 
         self._reward_predictor = reward_predictor
-        self.comparison_buffer = comparison_buffer
+        self.comparison_collector = comparison_collector
 
         if reward_predictor_optimizer:
             self._reward_predictor_optimizer = reward_predictor_optimizer
@@ -107,10 +108,11 @@ class PreferenceTRPO(TRPO):
         for _ in trainer.step_epochs():
             for _ in range(self._n_samples):
                 eps = trainer.obtain_episodes(trainer.step_itr)
-                self.comparison_buffer.add_episode_batch(trainer.step_itr, eps)
-                while self.comparison_buffer.requires_more_comparisons(trainer.step_itr):
-                    self.comparison_buffer.sample_comparison()
-                    self.comparison_buffer.label_unlabeled_comparisons()
+                self.comparison_collector.add_episode_batch(trainer.step_itr, eps)
+                while self.comparison_collector.requires_more_comparisons(trainer.step_itr):
+                    self.comparison_collector.sample_comparison()
+                while self.comparison_collector.requires_more_labels(trainer.step_itr):
+                    self.comparison_collector.label_unlabeled_comparisons()
                 trainer.step_path = self._predict_rewards(eps.to_list())
                 last_return = self._train_once(trainer.step_itr,
                                                trainer.step_path)
@@ -138,12 +140,15 @@ class PreferenceTRPO(TRPO):
             advs (torch.Tensor): Advantage value at each step with shape
                 :math:`(N, )`.
         """
+
         for dataset in self._reward_predictor_optimizer.get_minibatch(
                 left_segs, right_segs, prefs):
             self._train_reward_predictor(*dataset)
+
         for dataset in self._policy_optimizer.get_minibatch(
                 obs, actions, rewards, advs):
             self._train_policy(*dataset)
+
         for dataset in self._vf_optimizer.get_minibatch(obs, returns):
             self._train_value_function(*dataset)
 
@@ -169,7 +174,7 @@ class PreferenceTRPO(TRPO):
         advs_flat = self._compute_advantage(rewards, valids, baselines)
 
         labeled_comparisons = (
-            self.comparison_buffer.labeled_decisive_comparisons
+            self.comparison_collector.labeled_decisive_comparisons
         )
 
         left_segs = torch.tensor(
@@ -235,10 +240,10 @@ class PreferenceTRPO(TRPO):
                            reward_predictor_loss_after.item())
 
         tabular.record('BufferSize',
-                       self.comparison_buffer.n_transitions_stored)
+                       self.comparison_collector.n_transitions_stored)
 
         tabular.record('NumberOfComparisons',
-                       self.comparison_buffer.num_comparisons)
+                       self.comparison_collector.num_comparisons)
 
         self._old_policy.load_state_dict(self.policy.state_dict())
 
@@ -273,17 +278,27 @@ class PreferenceTRPO(TRPO):
         return loss
 
     def pretrain_reward_predictor(self, trainer):
-        while (self.comparison_buffer.n_transitions_stored <
-               (self.comparison_buffer._capacity * 0.8)):
+        logger.log('acquiring trajectories for pretrain')
+        while (self.comparison_collector.n_transitions_stored <
+               (self.comparison_collector._capacity * 0.8)):
             eps = trainer.obtain_episodes(0)
-            self.comparison_buffer.add_episode_batch(0, eps)
+            self.comparison_collector.add_episode_batch(0, eps)
 
-        while self.comparison_buffer.requires_more_comparisons(0):
-            self.comparison_buffer.sample_comparison()
-            self.comparison_buffer.label_unlabeled_comparisons()
+        logger.log('acquiring comparisons')
+        while self.comparison_collector.requires_more_comparisons(0):
+            self.comparison_collector.sample_comparison()
+
+        logger.log('acquiring labels on comparisons')
+        self.comparison_collector.label_unlabeled_comparisons()
+
+        while self.comparison_collector.requires_more_labels(0):
+            logger.log('Waiting for human labels...')
+            time.sleep(30)
+            self.comparison_collector.label_unlabeled_comparisons()
+
 
         labeled_comparisons = (
-            self.comparison_buffer.labeled_decisive_comparisons
+            self.comparison_collector.labeled_decisive_comparisons
         )
 
         left_segs = torch.tensor(

@@ -8,7 +8,6 @@ import torch
 from garage import wrap_experiment
 from garage.envs import GymEnv
 from garage.experiment.deterministic import set_seed
-from garage.torch.algos import TRPO
 from garage.torch.policies import GaussianMLPPolicy
 from garage.torch.value_functions import GaussianMLPValueFunction
 # from garage.torch.modules import MLPModule
@@ -18,15 +17,18 @@ from garage.trainer import Trainer
 import gym
 import safety_gym
 from gym.wrappers import Monitor
-from wrappers import RewardMasker
+from wrappers import RewardMasker, SafetyEnvStateAppender
 from algos import PreferenceTRPO
-from buffers import ComparisonBuffer, LabelAnnealer
+from buffers import SyntheticComparisonCollector, HumanComparisonCollector, LabelAnnealer
 from reward_predictors import MLPRewardPredictor
 # gym.logger.set_level(10)
 
+from datetime import datetime
+import argparse
+
 
 @wrap_experiment
-def trpo_pendulum(ctxt=None, seed=1):
+def robust_preferences(ctxt=None, seed=1):
     """Train TRPO with InvertedDoublePendulum-v2 environment.
 
     Args:
@@ -36,16 +38,28 @@ def trpo_pendulum(ctxt=None, seed=1):
             determinism.
 
     """
+    parser = argparse.ArgumentParser(description='preference reward learning')
+    parser.add_argument('--name', type=str, required=True)
+    parser.add_argument('--env_id', type=str, default='Safexp-PointGoal1-v0')
+    args = parser.parse_args()
+
     n_epochs = 2005
 
     set_seed(seed)
-    # naked_env = gym.make('InvertedDoublePendulum-v2')
-    naked_env = gym.make('Safexp-PointGoal1-v0')
-    naked_env.metadata['render.modes'] = ['rgb_array']
-    naked_env = Monitor(naked_env, 'monitoring')
+    env_id = args.env_id
+    experiment_name = (
+        args.name + '_' +
+        env_id + '_' +
+        datetime.now().strftime("%m/%d/%Y_%H:%M:%S")
+    )
 
-    env = GymEnv(RewardMasker(naked_env),
-                 max_episode_length=1000)
+    # env_id = 'InvertedDoublePendulum-v2'
+    env = gym.make(env_id)
+    env.metadata['render.modes'] = ['rgb_array']
+    # env = Monitor(env, 'monitoring')
+    env = RewardMasker(env)
+    env = SafetyEnvStateAppender(env)
+    env = GymEnv(env, max_episode_length=1000)
 
     trainer = Trainer(ctxt)
 
@@ -68,18 +82,26 @@ def trpo_pendulum(ctxt=None, seed=1):
                                     final_labels=1600,
                                     pretrain_labels=200)
 
-    comparison_buffer = ComparisonBuffer(20000, label_scheduler)
+    # comparison_collector = SyntheticComparisonCollector(20000, label_scheduler)
+    comparison_collector = HumanComparisonCollector(
+        20000,
+        label_scheduler,
+        env=env,
+        experiment_name=experiment_name)
 
     algo = PreferenceTRPO(env_spec=env.spec,
                           policy=policy,
                           value_function=value_function,
                           reward_predictor=reward_predictor,
-                          comparison_buffer=comparison_buffer,
+                          comparison_collector=comparison_collector,
                           discount=0.99,
                           center_adv=False)
 
-    trainer.setup(algo, env)
+    trainer.setup(algo,
+                  env,
+                  sampler_cls=LocalSampler,
+                  )
     trainer.train(n_epochs=n_epochs, batch_size=1024)
 
 
-trpo_pendulum(seed=1)
+robust_preferences(seed=1)
