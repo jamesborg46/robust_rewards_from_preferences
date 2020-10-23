@@ -6,6 +6,9 @@ from garage import StepType
 import uuid
 import abc
 
+from dowel import logger
+import time
+
 from utils.video import write_segment_to_video, upload_to_gcs
 
 
@@ -21,12 +24,40 @@ class ComparisonCollector(PathBuffer, abc.ABC):
     def __init__(self,
                  capacity_in_transitions,
                  label_scheduler,
-                 segment_length=1):
+                 collect_callable=None,
+                 segment_length=1,):
 
         super().__init__(capacity_in_transitions)
         self.label_scheduler = label_scheduler
         self.segment_length = segment_length
+        if collect_callable is None:
+            self.collect_callable = lambda itr: True
+        else:
+            self.collect_callable = collect_callable
         self._comparisons = []
+
+    def collect(self, step_itr, eps):
+        if self.collect_callable(step_itr):
+            self.add_episode_batch(step_itr, eps)
+
+        while self.requires_more_comparisons(step_itr):
+            self.sample_comparison()
+
+        self.label_unlabeled_comparisons()
+        while self.requires_more_labels(step_itr):
+            logger.log('Collecting more labels...')
+            time.sleep(10)
+            self.label_unlabeled_comparisons()
+
+    def step_paths(self):
+        for i in range(len(self._path_segments)):
+            first_seg, second_seg = self._path_segments[i]
+            first_seg_indices = np.arange(first_seg.start, first_seg.stop)
+            second_seg_indices = np.arange(second_seg.start, second_seg.stop)
+            indices = np.concatenate([first_seg_indices, second_seg_indices])
+            path = {key: buf_arr[indices] for
+                    key, buf_arr in self._buffer.items()}
+            yield path
 
     def add_episode_batch(self, step_itr, episodes):
         """Add a EpisodeBatch to the buffer.
@@ -38,8 +69,7 @@ class ComparisonCollector(PathBuffer, abc.ABC):
         for eps in episodes.split():
             terminals = np.array([
                 step_type == StepType.TERMINAL for step_type in eps.step_types
-            ],
-                                 dtype=bool)
+            ], dtype=bool)
             path = {
                 'observations': obs_space.flatten_n(eps.observations),
                 'next_observations':
@@ -48,6 +78,7 @@ class ComparisonCollector(PathBuffer, abc.ABC):
                 'gt_rewards': eps.env_infos['gt_reward'].reshape(-1, 1),
                 'states': eps.env_infos['state'],
                 'terminals': terminals.reshape(-1, 1),
+                'model_xml': eps.env_infos['model_xml'].reshape(-1, 1),
             }
             self.add_path(path)
 
@@ -57,7 +88,7 @@ class ComparisonCollector(PathBuffer, abc.ABC):
 
     def requires_more_labels(self, step_itr):
         num_labeled_comps = len(self.labeled_comparisons)
-        num_desired_labels = self.label_scheduler.n_desired_labels(step_itr)
+        num_desired_labels = self.label_scheduler.n_desired_labels(step_itr) * 0.8
         return num_labeled_comps < num_desired_labels
 
     def sample_segment(self):
@@ -78,7 +109,10 @@ class ComparisonCollector(PathBuffer, abc.ABC):
         start = np.random.randint(length - self.segment_length)
         end = start + self.segment_length
 
-        segment = {key: value[start:end] for key, value in path.items()}
+        segment = {key: value[start:end] for key, value in path.items()
+                   if key != 'model_xml'}
+
+        segment['model_xml'] = path['model_xml'][0, 0]
         return segment
 
     def sample_comparison(self):
@@ -158,7 +192,7 @@ class HumanComparisonCollector(ComparisonCollector):
 
         self.env = env
         self.experiment_name = experiment_name
-        self._upload_workers = multiprocessing.Pool(4)
+        # self._upload_workers = multiprocessing.Pool(4)
 
         if (Comparison.objects
                       .filter(experiment_name=experiment_name)
@@ -201,12 +235,13 @@ class HumanComparisonCollector(ComparisonCollector):
         gcs_bucket = os.environ.get('RL_TEACHER_GCS_BUCKET')
         gcs_path = os.path.join(gcs_bucket, media_id)
         _write_and_upload_video(self.env, gcs_path, local_path, segment)
-        # self._upload_workers.apply_async(_write_and_upload_video,
-        #                                  (self.env_id,
+        # upload_workers = multiprocessing.Pool(4)
+        # upload_workers.apply_async(_write_and_upload_video,
+        #                                  (self.env,
         #                                   gcs_path,
         #                                   local_path,
         #                                   segment)
-        #                                  )
+                                         # )
 
         media_url = "https://storage.googleapis.com/%s/%s" % (gcs_bucket.lstrip("gs://"), media_id)
         return media_url

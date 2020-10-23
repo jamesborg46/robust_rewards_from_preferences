@@ -33,13 +33,18 @@ class SegmentVideoRecorder(object):
 
 def write_segment_to_video(segment, fname, env):
     os.makedirs(osp.dirname(fname), exist_ok=True)
-    frames = [env.render_state(x) for x in segment["states"]]
-    for i in range(int(env.fps * 0.2)):
+    env.load_model(segment['model_xml'])
+    frames = [env.render_state(x)[::-1,:] for x in segment["states"]]
+    if hasattr(env, 'fps'):
+        fps = env.fps
+    else:
+        fps = 20
+    for i in range(int(fps * 0.2)):
         frames.append(frames[-1])
-    export_video(frames, fname, fps=env.fps)
+    export_video(frames, fname, fps=fps)
 
 
-def export_video(frames, fname, fps=10):
+def export_video(frames, fname, fps=20):
     assert "mp4" in fname, "Name requires .mp4 suffix"
     assert osp.isdir(osp.dirname(fname)), "%s must be a directory" % osp.dirname(fname)
 

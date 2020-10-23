@@ -54,6 +54,8 @@ class PreferenceTRPO(TRPO):
                  value_function,
                  reward_predictor,
                  comparison_collector,
+                 test_comparison_collector,
+                 val_freq=1,
                  policy_optimizer=None,
                  vf_optimizer=None,
                  reward_predictor_optimizer=None,
@@ -66,6 +68,13 @@ class PreferenceTRPO(TRPO):
                  use_softplus_entropy=False,
                  stop_entropy_gradient=False,
                  entropy_method='no_entropy'):
+
+        if vf_optimizer is None:
+            vf_optimizer = OptimizerWrapper(
+                (torch.optim.Adam, dict(lr=2.5e-4)),
+                value_function,
+                max_optimization_epochs=50,
+                minibatch_size=256)
 
         super().__init__(env_spec=env_spec,
                          policy=policy,
@@ -84,13 +93,20 @@ class PreferenceTRPO(TRPO):
 
         self._reward_predictor = reward_predictor
         self.comparison_collector = comparison_collector
+        self.test_comparison_collector = test_comparison_collector
+        self._val_freq = val_freq
+
+        self.reward_mean = 0
+        self.reward_std = 1
 
         if reward_predictor_optimizer:
             self._reward_predictor_optimizer = reward_predictor_optimizer
         else:
             self._reward_predictor_optimizer = OptimizerWrapper(
                 torch.optim.Adam,
-                self._reward_predictor)
+                self._reward_predictor,
+                max_optimization_epochs=20
+            )
 
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
@@ -108,17 +124,54 @@ class PreferenceTRPO(TRPO):
         for _ in trainer.step_epochs():
             for _ in range(self._n_samples):
                 eps = trainer.obtain_episodes(trainer.step_itr)
-                self.comparison_collector.add_episode_batch(trainer.step_itr, eps)
-                while self.comparison_collector.requires_more_comparisons(trainer.step_itr):
-                    self.comparison_collector.sample_comparison()
-                while self.comparison_collector.requires_more_labels(trainer.step_itr):
-                    self.comparison_collector.label_unlabeled_comparisons()
+
+                self.comparison_collector.collect(trainer.step_itr,
+                                                  eps)
+
+                self.test_comparison_collector.collect(trainer.step_itr,
+                                                       eps.split()[0])
+
                 trainer.step_path = self._predict_rewards(eps.to_list())
                 last_return = self._train_once(trainer.step_itr,
                                                trainer.step_path)
+                with torch.no_grad():
+                    self._validate(trainer.step_itr)
+
                 trainer.step_itr += 1
 
         return last_return
+
+    def _validate(self, step):
+        if not step % self._val_freq == 0:
+            return
+
+        gt_rewards = []
+        predicted_rewards = []
+        corrs = []
+        _paths = []
+        for path in self.comparison_collector.step_paths():
+            _paths.append(path)
+            paths = self._predict_rewards([path], normalize=False)
+            # gt_rewards.append(path['gt_rewards'].flatten())
+            predicted_rewards.append(path['predicted_rewards'].flatten())
+            corrs.append(corrcoef(path['gt_rewards'].flatten(),
+                                  path['predicted_rewards'].flatten()))
+
+        predicted_rewards = np.concatenate(predicted_rewards)
+        # self.reward_mean = np.mean(predicted_rewards)
+        # self.reward_std = np.std(predicted_rewards)
+        # corr = corrcoef(np.concatenate(gt_rewards),
+        #                 np.concatenate(predicted_rewards))
+
+        # anchor_path = self._predict_rewards([self.anchor_eps])
+        # assert len(anchor_path) == 1
+        # anchor_path = anchor_path[0]
+
+        with tabular.prefix(self._reward_predictor.name):
+            tabular.record('/ValCorrelation', np.mean(corrs))
+            # tabular.record('/AnchorPredReturn',
+            #                np.sum(anchor_path['predicted_rewards']))
+
 
     def _train(self,
                obs,
@@ -239,11 +292,14 @@ class PreferenceTRPO(TRPO):
                            reward_predictor_loss_before.item() -
                            reward_predictor_loss_after.item())
 
-        tabular.record('BufferSize',
-                       self.comparison_collector.n_transitions_stored)
+        with tabular.prefix('Buffer'):
+            tabular.record('/Size',
+                            self.comparison_collector.n_transitions_stored)
+            tabular.record('/TestSize',
+                            self.test_comparison_collector.n_transitions_stored)
+            tabular.record('/Comparisons',
+                           self.comparison_collector.num_comparisons)
 
-        tabular.record('NumberOfComparisons',
-                       self.comparison_collector.num_comparisons)
 
         self._old_policy.load_state_dict(self.policy.state_dict())
 
@@ -281,8 +337,14 @@ class PreferenceTRPO(TRPO):
         logger.log('acquiring trajectories for pretrain')
         while (self.comparison_collector.n_transitions_stored <
                (self.comparison_collector._capacity * 0.8)):
+
             eps = trainer.obtain_episodes(0)
             self.comparison_collector.add_episode_batch(0, eps)
+
+            eps = trainer.obtain_episodes(0)
+            self.test_comparison_collector.add_episode_batch(0, eps)
+
+        # self.anchor_eps = eps.to_list()[0]
 
         logger.log('acquiring comparisons')
         while self.comparison_collector.requires_more_comparisons(0):
@@ -313,28 +375,39 @@ class PreferenceTRPO(TRPO):
             [comp['label'] for comp in labeled_comparisons]
         ).type(torch.long)
 
-        for _ in range(200):
+        for _ in range(100):
             for dataset in self._reward_predictor_optimizer.get_minibatch(
                     left_segs, right_segs, preferences):
                 self._train_reward_predictor(*dataset)
 
-    def _predict_rewards(self, paths):
+    def _predict_rewards(self, paths, normalize=True):
         """Predicts rewards using reward predictor and attaches predictions
         to paths
         """
 
-        obs = torch.tensor(
-            np.concatenate([path['observations'] for path in paths])
-        ).type(torch.float32)
-
         with torch.no_grad():
+            obs = torch.tensor(
+                np.concatenate([path['observations'] for path in paths])
+            ).type(torch.float32)
+
             predicted_rewards = self._reward_predictor(obs).flatten().numpy()
 
+            # if normalize:
+            #     predicted_rewards = (
+            #         (predicted_rewards - self.reward_mean) /
+            #         self.reward_std
+            #     )
         start = 0
         for path in paths:
             N = len(path['observations'])
             path['predicted_rewards'] = predicted_rewards[start:start+N]
-            # path['predicted_rewards'] = path['env_infos']['gt_reward']
+            if 'env_infos' in path.keys():
+                path['env_infos']['predicted_rewards'] = predicted_rewards[start:start+N]
+                # path['env_infos']['predicted_rewards'] = path['env_infos']['gt_reward']
+                # path['predicted_rewards'] = path['env_infos']['gt_reward']
+            # else:
+            #     path['predicted_rewards'] = path['gt_rewards']
+
             start += N
 
         return paths
@@ -393,12 +466,18 @@ class PreferenceTRPO(TRPO):
         """
         returns = []
         undiscounted_returns = []
+        undiscounted_predicted_returns = []
+        correlations = []
         termination = []
         success = []
         for eps in batch.split():
             returns.append(discount_cumsum(eps.env_infos['gt_reward'],
                                            discount))
             undiscounted_returns.append(sum(eps.env_infos['gt_reward']))
+            undiscounted_predicted_returns.append(
+                sum(eps.env_infos['predicted_rewards']))
+            correlations.append(corrcoef(eps.env_infos['gt_reward'],
+                                         eps.env_infos['predicted_rewards']))
             termination.append(
                 float(
                     any(step_type == StepType.TERMINAL
@@ -407,11 +486,11 @@ class PreferenceTRPO(TRPO):
                 success.append(float(eps.env_infos['success'].any()))
 
         average_discounted_return = np.mean([rtn[0] for rtn in returns])
+        average_correlations = np.mean(correlations)
 
         with tabular.prefix(prefix + '/'):
             tabular.record('Iteration', itr)
             tabular.record('NumEpisodes', len(returns))
-
             tabular.record('AverageDiscountedGTReturn',
                            average_discounted_return)
             tabular.record('AverageGTReturn', np.mean(undiscounted_returns))
@@ -422,4 +501,18 @@ class PreferenceTRPO(TRPO):
             if success:
                 tabular.record('SuccessRate', np.mean(success))
 
+        with tabular.prefix(self._reward_predictor.name):
+            tabular.record('/BatchCorrelation', np.mean(average_correlations))
+            tabular.record('/AveragePredReturn',
+                           np.mean(undiscounted_predicted_returns))
+
         return undiscounted_returns
+
+
+def corrcoef(dist_a, dist_b):
+    """Returns a scalar between 1.0 and -1.0. 0.0 is no correlation. 1.0 is perfect correlation"""
+    dist_a = np.copy(dist_a)  # Prevent np.corrcoef from blowing up on data with 0 variance
+    dist_b = np.copy(dist_b)
+    dist_a[0] += 1e-12
+    dist_b[0] += 1e-12
+    return np.corrcoef(dist_a, dist_b)[0, 1]
