@@ -71,10 +71,10 @@ class PreferenceTRPO(TRPO):
 
         if vf_optimizer is None:
             vf_optimizer = OptimizerWrapper(
-                (torch.optim.Adam, dict(lr=2.5e-4)),
+                (torch.optim.Adam, dict(lr=1e-3)),
                 value_function,
-                max_optimization_epochs=50,
-                minibatch_size=256)
+                max_optimization_epochs=100,
+                minibatch_size=128)
 
         super().__init__(env_spec=env_spec,
                          policy=policy,
@@ -392,17 +392,48 @@ class PreferenceTRPO(TRPO):
 
             predicted_rewards = self._reward_predictor(obs).flatten().numpy()
 
-            # if normalize:
-            #     predicted_rewards = (
-            #         (predicted_rewards - self.reward_mean) /
-            #         self.reward_std
-            #     )
+            if 'env_infos' in paths[0].keys():
+                gt_rewards = np.concatenate([path['env_infos']['gt_reward'].flatten()
+                                             for path in paths])
+            else:
+                gt_rewards = np.concatenate([path['gt_rewards'].flatten()
+                                             for path in paths])
+            gt_rewards_mean = np.mean(gt_rewards)
+            gt_rewards_std = np.std(gt_rewards)
+
+            if normalize:
+                reward_mean = np.mean(predicted_rewards)
+                reward_std = np.std(predicted_rewards)
+                predicted_rewards = (
+                    (predicted_rewards - reward_mean)
+                    / reward_std
+                    # * gt_rewards_std + gt_rewards_mean - 1
+                )
+                predicted_rewards = predicted_rewards - predicted_rewards.max()
         start = 0
         for path in paths:
             N = len(path['observations'])
+
+            # pred_rewards = predicted_rewards[start:start+N]
+            # pred_reward_mean = np.mean(pred_rewards)
+            # pred_reward_std = np.mean(pred_rewards)
+
+            # if 'env_infos' in path.keys():
+            #     gt_reward_mean = np.mean(path['env_infos']['gt_reward'])
+            #     gt_reward_std = np.std(path['env_infos']['gt_reward'])
+            # else:
+            #     gt_reward_mean = np.mean(path['gt_rewards'])
+            #     gt_reward_std = np.std(path['gt_rewards'])
+            # path['predicted_rewards'] = (
+            #     ((pred_rewards - pred_reward_mean)
+            #      / pred_reward_std)
+            #     * gt_reward_std + gt_reward_mean
+            # )
+
             path['predicted_rewards'] = predicted_rewards[start:start+N]
             if 'env_infos' in path.keys():
-                path['env_infos']['predicted_rewards'] = predicted_rewards[start:start+N]
+                # path['env_infos']['predicted_rewards'] = predicted_rewards[start:start+N]
+                path['env_infos']['predicted_rewards'] = path['predicted_rewards']
                 # path['env_infos']['predicted_rewards'] = path['env_infos']['gt_reward']
                 # path['predicted_rewards'] = path['env_infos']['gt_reward']
             # else:
