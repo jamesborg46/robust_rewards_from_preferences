@@ -5,6 +5,7 @@ import multiprocessing
 from garage import StepType
 import uuid
 import abc
+import collections
 
 from dowel import logger
 import time
@@ -16,7 +17,8 @@ def always_true(i):
     return True
 
 
-class ComparisonCollector(PathBuffer, abc.ABC):
+# class ComparisonCollector(PathBuffer, abc.ABC):
+class ComparisonCollector(abc.ABC):
     """A buffer that extends PathBuffer with added functionality for sampling
     segments and collecting segment comparisons
 
@@ -31,18 +33,59 @@ class ComparisonCollector(PathBuffer, abc.ABC):
                  collect_callable=None,
                  segment_length=1,):
 
-        super().__init__(capacity_in_transitions)
+        # super().__init__(capacity_in_transitions)
+        self._capacity = capacity_in_transitions
         self.label_scheduler = label_scheduler
         self.segment_length = segment_length
         if collect_callable is None:
             self.collect_callable = always_true
         else:
             self.collect_callable = collect_callable
-        self._comparisons = []
 
-    def collect(self, step_itr, eps):
+        self._comparisons = []
+        self._paths = collections.deque()
+        self.n_transitions_stored = 0
+
+    @staticmethod
+    def _get_path_length(path):
+        """Get path length.
+        Args:
+            path (dict): Path.
+        Returns:
+            length: Path length.
+        Raises:
+            ValueError: If path is empty or has inconsistent lengths.
+        """
+        length_key = None
+        length = None
+        for key, value in path.items():
+            if length is None:
+                length = len(value)
+                length_key = key
+            elif len(value) != length:
+                raise ValueError('path has inconsistent lengths between '
+                                 '{!r} and {!r}.'.format(length_key, key))
+        if not length:
+            raise ValueError('Nothing in path')
+        return length
+
+    def add_path(self, path):
+        l = self._get_path_length(path)
+        while (l + self.n_transitions_stored) > self._capacity:
+            removed = self._paths.popleft()
+            self.n_transitions_stored -= self._get_path_length(removed)
+        self._paths.append(path)
+        self.n_transitions_stored += l
+
+    def sample_path(self):
+        path_idx = np.random.randint(len(self._paths))
+        return self._paths[path_idx]
+
+    # def collect(self, step_itr, eps):
+    def collect(self, step_itr, env_spec, paths):
         if self.collect_callable(step_itr):
-            self.add_episode_batch(step_itr, eps)
+            # self.add_episode_batch(step_itr, eps)
+            self.add_episode_batch(step_itr, env_spec, paths)
 
         while self.requires_more_comparisons(step_itr):
             self.sample_comparison()
@@ -53,36 +96,86 @@ class ComparisonCollector(PathBuffer, abc.ABC):
             time.sleep(10)
             self.label_unlabeled_comparisons()
 
-    def step_paths(self):
-        for i in range(len(self._path_segments)):
-            first_seg, second_seg = self._path_segments[i]
-            first_seg_indices = np.arange(first_seg.start, first_seg.stop)
-            second_seg_indices = np.arange(second_seg.start, second_seg.stop)
-            indices = np.concatenate([first_seg_indices, second_seg_indices])
-            path = {key: buf_arr[indices] for
-                    key, buf_arr in self._buffer.items()}
-            yield path
+    # def step_paths(self):
+    #     for i in range(len(self._path_segments)):
+    #         first_seg, second_seg = self._path_segments[i]
+    #         first_seg_indices = np.arange(first_seg.start, first_seg.stop)
+    #         second_seg_indices = np.arange(second_seg.start, second_seg.stop)
+    #         indices = np.concatenate([first_seg_indices, second_seg_indices])
+    #         path = {key: buf_arr[indices] for
+    #                 key, buf_arr in self._buffer.items()}
+    #         yield path
 
-    def add_episode_batch(self, step_itr, episodes):
+    # def add_episode_batch(self, step_itr, episodes):
+    #     """Add a EpisodeBatch to the buffer.
+    #     Args:
+    #         episodes (EpisodeBatch): Episodes to add.
+    #     """
+    #     env_spec = episodes.env_spec
+    #     obs_space = env_spec.observation_space
+    #     for eps in episodes.split():
+    #         terminals = np.array([
+    #             step_type == StepType.TERMINAL for step_type in eps.step_types
+    #         ], dtype=bool)
+    #         path = {
+    #             'observations': obs_space.flatten_n(eps.observations),
+    #             'next_observations':
+    #             obs_space.flatten_n(eps.next_observations),
+    #             'actions': env_spec.action_space.flatten_n(eps.actions),
+    #             'gt_rewards': eps.env_infos['gt_reward'].reshape(-1, 1),
+    #             'states': eps.env_infos['state'],
+    #             'terminals': terminals.reshape(-1, 1),
+    #             'model_xml': eps.env_infos['model_xml'].reshape(-1, 1),
+    #         }
+    #         self.add_path(path)
+
+    def add_episode_batch(self, step_itr, env_spec, paths):
         """Add a EpisodeBatch to the buffer.
         Args:
             episodes (EpisodeBatch): Episodes to add.
         """
-        env_spec = episodes.env_spec
         obs_space = env_spec.observation_space
-        for eps in episodes.split():
+        for path in paths:
             terminals = np.array([
-                step_type == StepType.TERMINAL for step_type in eps.step_types
+                step_type == StepType.TERMINAL for step_type
+                in path['step_types']
             ], dtype=bool)
+
+            if terminals.flatten()[:-1].any():
+                breakpoint()
+
+            if 'predicted_rewards' in path.keys():
+                original_predicted_rewards = path['predicted_rewards'].reshape(-1, 1)
+                original_returns = path['env_infos']['original_returns'].reshape(-1, 1)
+                original_baselines = path['env_infos']['original_baselines'].reshape(-1, 1)
+            else:
+                original_predicted_rewards = np.empty(
+                    path['observations'].shape[0]
+                ).reshape(-1, 1)
+                original_predicted_rewards[:] = np.NaN
+
+                original_returns = np.empty(
+                    path['observations'].shape[0]
+                ).reshape(-1, 1)
+                original_predicted_rewards[:] = np.NaN
+
+                original_baselines = np.empty(
+                    path['observations'].shape[0]
+                ).reshape(-1, 1)
+                original_predicted_rewards[:] = np.NaN
+
             path = {
-                'observations': obs_space.flatten_n(eps.observations),
+                'observations': obs_space.flatten_n(path['observations']),
                 'next_observations':
-                obs_space.flatten_n(eps.next_observations),
-                'actions': env_spec.action_space.flatten_n(eps.actions),
-                'gt_rewards': eps.env_infos['gt_reward'].reshape(-1, 1),
-                'states': eps.env_infos['state'],
+                obs_space.flatten_n(path['next_observations']),
+                'actions': env_spec.action_space.flatten_n(path['actions']),
+                'gt_rewards': path['env_infos']['gt_reward'].reshape(-1, 1),
+                'original_predicted_rewards': original_predicted_rewards,
+                'original_returns': original_returns,
+                'original_baselines': original_baselines,
+                'states': path['env_infos']['state'],
                 'terminals': terminals.reshape(-1, 1),
-                'model_xml': eps.env_infos['model_xml'].reshape(-1, 1),
+                'model_xml': path['env_infos']['model_xml'].reshape(-1, 1),
             }
             self.add_path(path)
 

@@ -129,15 +129,17 @@ class PreferenceTRPO(TRPO):
             for _ in range(self._n_samples):
                 eps = trainer.obtain_episodes(trainer.step_itr)
 
+                assert len(eps.split()) == len(eps.to_list())
+
                 trainer.step_path = self._predict_rewards(eps.to_list())
 
-                self.comparison_collector.collect(trainer.step_itr,
-                                                  eps)
+#                 self.comparison_collector.collect(trainer.step_itr,
+#                                                   eps)
 
-                self.test_comparison_collector.collect(trainer.step_itr,
-                                                       eps.split()[0])
+#                 self.test_comparison_collector.collect(trainer.step_itr,
+#                                                        eps.split()[0])
 
-                if trainer.step_itr % 2 == 0:
+                if trainer.step_itr % 10 == 0:
                     with open(trainer._snapshotter.snapshot_dir
                               + '/comparisons_{}.pkl'
                               .format(trainer.step_itr), 'wb') as f:
@@ -145,6 +147,15 @@ class PreferenceTRPO(TRPO):
 
                 last_return = self._train_once(trainer.step_itr,
                                                trainer.step_path)
+
+                self.comparison_collector.collect(trainer.step_itr,
+                                                  eps.env_spec,
+                                                  trainer.step_path)
+
+                self.test_comparison_collector.collect(trainer.step_itr,
+                                                       eps.env_spec,
+                                                       trainer.step_path[:1])
+
                 with torch.no_grad():
                     self._validate(trainer.step_itr)
 
@@ -160,7 +171,8 @@ class PreferenceTRPO(TRPO):
         predicted_rewards = []
         corrs = []
         _paths = []
-        for path in self.comparison_collector.step_paths():
+        # for path in self.comparison_collector.step_paths():
+        for path in self.comparison_collector._paths:
             _paths.append(path)
             paths = self._predict_rewards([path])
             predicted_rewards.append(path['predicted_rewards'].flatten())
@@ -227,6 +239,12 @@ class PreferenceTRPO(TRPO):
         returns_flat = torch.cat(filter_valids(returns, valids))
         advs_flat = self._compute_advantage(rewards, valids, baselines)
 
+        filtered_returns = filter_valids(returns, valids)
+        filtered_baselines = filter_valids(baselines, valids)
+        for i, path in enumerate(paths):
+            path['env_infos']['original_returns'] = filtered_returns[i].numpy()
+            path['env_infos']['original_baselines'] = filtered_baselines[i].numpy()
+
         labeled_comparisons = (
             self.comparison_collector.labeled_decisive_comparisons
         )
@@ -244,11 +262,12 @@ class PreferenceTRPO(TRPO):
         ).type(torch.long)
 
         with torch.no_grad():
-            reward_predictor_loss_before = (
-                self._reward_predictor.compute_preference_loss(left_segs,
-                                                               right_segs,
-                                                               preferences)
-            )
+            if not self.use_gt_rewards:
+                reward_predictor_loss_before = (
+                    self._reward_predictor.compute_preference_loss(left_segs,
+                                                                   right_segs,
+                                                                   preferences)
+                )
             policy_loss_before = self._compute_loss_with_adv(
                 obs_flat, actions_flat, rewards_flat, advs_flat)
             vf_loss_before = self._value_function.compute_loss(
@@ -259,11 +278,12 @@ class PreferenceTRPO(TRPO):
                     advs_flat, left_segs, right_segs, preferences)
 
         with torch.no_grad():
-            reward_predictor_loss_after = (
-                self._reward_predictor.compute_preference_loss(left_segs,
-                                                               right_segs,
-                                                               preferences)
-            )
+            if not self.use_gt_rewards:
+                reward_predictor_loss_after = (
+                    self._reward_predictor.compute_preference_loss(left_segs,
+                                                                   right_segs,
+                                                                   preferences)
+                )
             policy_loss_after = self._compute_loss_with_adv(
                 obs_flat, actions_flat, rewards_flat, advs_flat)
             vf_loss_after = self._value_function.compute_loss(
@@ -286,12 +306,13 @@ class PreferenceTRPO(TRPO):
             tabular.record('/dLoss',
                            vf_loss_before.item() - vf_loss_after.item())
 
-        with tabular.prefix(self._reward_predictor.name):
-            tabular.record('/LossBefore', reward_predictor_loss_before.item())
-            tabular.record('/LossAfter', reward_predictor_loss_after.item())
-            tabular.record('/dLoss',
-                           reward_predictor_loss_before.item() -
-                           reward_predictor_loss_after.item())
+        if not self.use_gt_rewards:
+            with tabular.prefix(self._reward_predictor.name):
+                tabular.record('/LossBefore', reward_predictor_loss_before.item())
+                tabular.record('/LossAfter', reward_predictor_loss_after.item())
+                tabular.record('/dLoss',
+                               reward_predictor_loss_before.item() -
+                               reward_predictor_loss_after.item())
 
         with tabular.prefix('Buffer'):
             tabular.record('/Size',
@@ -340,10 +361,16 @@ class PreferenceTRPO(TRPO):
                (self.comparison_collector._capacity * 0.8)):
 
             eps = trainer.obtain_episodes(0)
-            self.comparison_collector.add_episode_batch(0, eps)
+            # self.comparison_collector.add_episode_batch(0,eps)
+            self.comparison_collector.add_episode_batch(0,
+                                                        eps.env_spec,
+                                                        eps.to_list())
 
             eps = trainer.obtain_episodes(0)
-            self.test_comparison_collector.add_episode_batch(0, eps)
+            # self.test_comparison_collector.add_episode_batch(0, eps)
+            self.test_comparison_collector.add_episode_batch(0,
+                                                             eps.env_spec,
+                                                             eps.to_list())
 
         logger.log('acquiring comparisons')
         while self.comparison_collector.requires_more_comparisons(0):
@@ -409,7 +436,7 @@ class PreferenceTRPO(TRPO):
                 reward_min = predicted_rewards.min()
 
                 predicted_rewards = (
-                    -1 + (predicted_rewards - reward_min)
+                    -3 + 2*(predicted_rewards - reward_min)
                     / (reward_max - reward_min)
                 )
 

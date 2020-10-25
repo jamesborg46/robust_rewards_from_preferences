@@ -3,3 +3,5 @@ monitoring/
 __pycache__/
 *.ipynb
 MUJOCO_LOG.TXT
+*.mp4
+*.png

@@ -22,9 +22,17 @@ class SafetyEnvStateAppender(gym.Wrapper):
         self.env.reset()
         self.env.world.sim = MjSim(load_model_from_xml(model_xml))
 
-    def render_state(self, state):
+    def render_state(self,
+                     state,
+                     overlay_bl=None,
+                     overlay_tl=None,
+                     overlay_tr=None):
         self.env.world.sim.set_state_from_flattened(state)
         self.env.sim.forward()
         self.env.render_lidar_markers = False
-        rgb_array = self.env.render('rgb_array')
+        rgb_array = self.env.render('rgb_array',
+                                    overlay_bl=overlay_bl,
+                                    overlay_tl=overlay_tl,
+                                    overlay_tr=overlay_tr,
+                                    )
         return rgb_array
