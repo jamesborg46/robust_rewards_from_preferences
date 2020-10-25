@@ -26,5 +26,5 @@ class SafetyEnvStateAppender(gym.Wrapper):
         self.env.world.sim.set_state_from_flattened(state)
         self.env.sim.forward()
         self.env.render_lidar_markers = False
-        rgb_array = self.render('rgb_array')
+        rgb_array = self.env.render('rgb_array')
         return rgb_array

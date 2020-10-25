@@ -10,6 +10,7 @@ from dowel import tabular, logger
 import torch
 import numpy as np
 import time
+import pickle
 
 
 class PreferenceTRPO(TRPO):
@@ -56,6 +57,7 @@ class PreferenceTRPO(TRPO):
                  comparison_collector,
                  test_comparison_collector,
                  val_freq=1,
+                 use_gt_rewards=False,
                  policy_optimizer=None,
                  vf_optimizer=None,
                  reward_predictor_optimizer=None,
@@ -94,6 +96,7 @@ class PreferenceTRPO(TRPO):
         self._reward_predictor = reward_predictor
         self.comparison_collector = comparison_collector
         self.test_comparison_collector = test_comparison_collector
+        self.use_gt_rewards = use_gt_rewards
         self._val_freq = val_freq
 
         self.reward_mean = 0
@@ -119,11 +122,14 @@ class PreferenceTRPO(TRPO):
         """
         last_return = None
 
-        self.pretrain_reward_predictor(trainer)
+        if not self.use_gt_rewards:
+            self.pretrain_reward_predictor(trainer)
 
         for _ in trainer.step_epochs():
             for _ in range(self._n_samples):
                 eps = trainer.obtain_episodes(trainer.step_itr)
+
+                trainer.step_path = self._predict_rewards(eps.to_list())
 
                 self.comparison_collector.collect(trainer.step_itr,
                                                   eps)
@@ -131,7 +137,12 @@ class PreferenceTRPO(TRPO):
                 self.test_comparison_collector.collect(trainer.step_itr,
                                                        eps.split()[0])
 
-                trainer.step_path = self._predict_rewards(eps.to_list())
+                if trainer.step_itr % 2 == 0:
+                    with open(trainer._snapshotter.snapshot_dir
+                              + '/comparisons_{}.pkl'
+                              .format(trainer.step_itr), 'wb') as f:
+                        pickle.dump(self.comparison_collector, f)
+
                 last_return = self._train_once(trainer.step_itr,
                                                trainer.step_path)
                 with torch.no_grad():
@@ -151,26 +162,15 @@ class PreferenceTRPO(TRPO):
         _paths = []
         for path in self.comparison_collector.step_paths():
             _paths.append(path)
-            paths = self._predict_rewards([path], normalize=False)
-            # gt_rewards.append(path['gt_rewards'].flatten())
+            paths = self._predict_rewards([path])
             predicted_rewards.append(path['predicted_rewards'].flatten())
             corrs.append(corrcoef(path['gt_rewards'].flatten(),
                                   path['predicted_rewards'].flatten()))
 
         predicted_rewards = np.concatenate(predicted_rewards)
-        # self.reward_mean = np.mean(predicted_rewards)
-        # self.reward_std = np.std(predicted_rewards)
-        # corr = corrcoef(np.concatenate(gt_rewards),
-        #                 np.concatenate(predicted_rewards))
-
-        # anchor_path = self._predict_rewards([self.anchor_eps])
-        # assert len(anchor_path) == 1
-        # anchor_path = anchor_path[0]
 
         with tabular.prefix(self._reward_predictor.name):
             tabular.record('/ValCorrelation', np.mean(corrs))
-            # tabular.record('/AnchorPredReturn',
-            #                np.sum(anchor_path['predicted_rewards']))
 
 
     def _train(self,
@@ -194,9 +194,10 @@ class PreferenceTRPO(TRPO):
                 :math:`(N, )`.
         """
 
-        for dataset in self._reward_predictor_optimizer.get_minibatch(
-                left_segs, right_segs, prefs):
-            self._train_reward_predictor(*dataset)
+        if not self.use_gt_rewards:
+            for dataset in self._reward_predictor_optimizer.get_minibatch(
+                    left_segs, right_segs, prefs):
+                self._train_reward_predictor(*dataset)
 
         for dataset in self._policy_optimizer.get_minibatch(
                 obs, actions, rewards, advs):
@@ -344,8 +345,6 @@ class PreferenceTRPO(TRPO):
             eps = trainer.obtain_episodes(0)
             self.test_comparison_collector.add_episode_batch(0, eps)
 
-        # self.anchor_eps = eps.to_list()[0]
-
         logger.log('acquiring comparisons')
         while self.comparison_collector.requires_more_comparisons(0):
             self.comparison_collector.sample_comparison()
@@ -357,7 +356,6 @@ class PreferenceTRPO(TRPO):
             logger.log('Waiting for human labels...')
             time.sleep(30)
             self.comparison_collector.label_unlabeled_comparisons()
-
 
         labeled_comparisons = (
             self.comparison_collector.labeled_decisive_comparisons
@@ -380,68 +378,59 @@ class PreferenceTRPO(TRPO):
                     left_segs, right_segs, preferences):
                 self._train_reward_predictor(*dataset)
 
-    def _predict_rewards(self, paths, normalize=True):
+    def _predict_rewards(self, paths):
         """Predicts rewards using reward predictor and attaches predictions
         to paths
         """
+        if self.use_gt_rewards:
+            for path in paths:
+                if 'env_infos' in path.keys():
+                    path['env_infos']['predicted_rewards'] = (
+                        path['env_infos']['gt_reward']
+                    )
+                    path['predicted_rewards'] = path['env_infos']['gt_reward']
+                else:
+                    path['predicted_rewards'] = path['gt_rewards']
+            return paths
 
-        with torch.no_grad():
-            obs = torch.tensor(
-                np.concatenate([path['observations'] for path in paths])
-            ).type(torch.float32)
+        else:
+            with torch.no_grad():
+                obs = torch.tensor(
+                    np.concatenate([path['observations'] for path in paths])
+                ).type(torch.float32)
 
-            predicted_rewards = self._reward_predictor(obs).flatten().numpy()
+                predicted_rewards = (
+                    self._reward_predictor(obs).flatten().numpy()
+                )
 
-            if 'env_infos' in paths[0].keys():
-                gt_rewards = np.concatenate([path['env_infos']['gt_reward'].flatten()
-                                             for path in paths])
-            else:
-                gt_rewards = np.concatenate([path['gt_rewards'].flatten()
-                                             for path in paths])
-            gt_rewards_mean = np.mean(gt_rewards)
-            gt_rewards_std = np.std(gt_rewards)
-
-            if normalize:
                 reward_mean = np.mean(predicted_rewards)
                 reward_std = np.std(predicted_rewards)
+                reward_max = predicted_rewards.max()
+                reward_min = predicted_rewards.min()
+
                 predicted_rewards = (
-                    (predicted_rewards - reward_mean)
-                    / reward_std
-                    # * gt_rewards_std + gt_rewards_mean - 1
+                    -1 + (predicted_rewards - reward_min)
+                    / (reward_max - reward_min)
                 )
-                predicted_rewards = predicted_rewards - predicted_rewards.max()
-        start = 0
-        for path in paths:
-            N = len(path['observations'])
 
-            # pred_rewards = predicted_rewards[start:start+N]
-            # pred_reward_mean = np.mean(pred_rewards)
-            # pred_reward_std = np.mean(pred_rewards)
+                # predicted_rewards = (
+                #     (predicted_rewards - reward_mean)
+                #     / reward_std
+                # ) - predicted_rewards.max()
 
-            # if 'env_infos' in path.keys():
-            #     gt_reward_mean = np.mean(path['env_infos']['gt_reward'])
-            #     gt_reward_std = np.std(path['env_infos']['gt_reward'])
-            # else:
-            #     gt_reward_mean = np.mean(path['gt_rewards'])
-            #     gt_reward_std = np.std(path['gt_rewards'])
-            # path['predicted_rewards'] = (
-            #     ((pred_rewards - pred_reward_mean)
-            #      / pred_reward_std)
-            #     * gt_reward_std + gt_reward_mean
-            # )
+            start = 0
+            for path in paths:
+                N = len(path['observations'])
 
-            path['predicted_rewards'] = predicted_rewards[start:start+N]
-            if 'env_infos' in path.keys():
-                # path['env_infos']['predicted_rewards'] = predicted_rewards[start:start+N]
-                path['env_infos']['predicted_rewards'] = path['predicted_rewards']
-                # path['env_infos']['predicted_rewards'] = path['env_infos']['gt_reward']
-                # path['predicted_rewards'] = path['env_infos']['gt_reward']
-            # else:
-            #     path['predicted_rewards'] = path['gt_rewards']
+                path['predicted_rewards'] = predicted_rewards[start:start+N]
+                if 'env_infos' in path.keys():
+                    path['env_infos']['predicted_rewards'] = (
+                        path['predicted_rewards']
+                    )
 
-            start += N
+                start += N
 
-        return paths
+            return paths
 
     def _process_samples(self, paths):
         r"""Process sample data based on the collected paths.

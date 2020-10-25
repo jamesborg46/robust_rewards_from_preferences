@@ -12,10 +12,11 @@ from garage.experiment.deterministic import set_seed
 from garage.torch.policies import GaussianMLPPolicy
 from garage.torch.value_functions import GaussianMLPValueFunction
 # from garage.torch.modules import MLPModule
-from garage.sampler import LocalSampler
+from garage.sampler import LocalSampler, RaySampler
 from garage.trainer import Trainer
 
 import gym
+from gym.envs.registration import register
 import safety_gym
 from safety_gym.envs.engine import Engine
 from gym.wrappers import Monitor
@@ -23,48 +24,59 @@ from wrappers import RewardMasker, SafetyEnvStateAppender
 from algos import PreferenceTRPO
 from buffers import SyntheticComparisonCollector, HumanComparisonCollector, LabelAnnealer
 from reward_predictors import MLPRewardPredictor
-# gym.logger.set_level(10)
+
+import numpy as np
 
 from datetime import datetime
+import os
 import argparse
+import json
 
 
-@wrap_experiment
-def robust_preferences(ctxt=None, seed=1):
-    """Train TRPO with InvertedDoublePendulum-v2 environment.
+@wrap_experiment(name_parameters='passed')
+def robust_preferences(ctxt=None,
+                       seed=1,
+                       name='EXP',
+                       env_id='Safexp-PointGoal0-v0',
+                       comparison_collector_type='synthetic',
+                       number_epochs=1000,
+                       segment_length=1,
+                       max_episode_length=1000,
+                       final_labels=1000,
+                       pre_train_labels=400,
+                       monitor=False,
+                       local=False,
+                       use_gt_rewards=False,
+                       **kwargs):
 
-    Args:
-        ctxt (garage.experiment.ExperimentContext): The experiment
-            configuration used by Trainer to create the snapshotter.
-        seed (int): Used to seed the random number generator to produce
-            determinism.
 
     """
-    parser = argparse.ArgumentParser(description='preference reward learning')
-    parser.add_argument('--name', type=str, required=True)
-    parser.add_argument('--env_id', type=str, default='Safexp-PointGoal0-v0')
-    args = parser.parse_args()
-
-    n_epochs = 1001
+    TODO DOCS
+    """
 
     set_seed(seed)
-    env_id = args.env_id
-    experiment_name = (
-        args.name + '_' +
-        env_id + '_' +
-        datetime.now().strftime("%m/%d/%Y_%H:%M:%S")
-    )
-
-    # env_id = 'InvertedDoublePendulum-v2'
     env = gym.make(env_id)
     config = env.config
-    config['continue_goal'] = False
-    config['reward_goal'] = 0
+
+    for k, v in kwargs.items():
+        config[k] = v
+
+    with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') as outfile:
+        json.dump(config, outfile)
+
     env = Engine(config)
     env.metadata['render.modes'] = ['rgb_array']
-    env = Monitor(env,
-                  'monitoring',
-                  video_callable=lambda i: (i % 10 == 0) and (i != 0))
+
+    if monitor:
+        # Defining this because pickle doesn't pickle lambda functions
+        def video_callable(i):
+            return (i % 100 == 0) and (i != 0)
+
+        env = Monitor(env,
+                      ctxt.snapshot_dir + '/monitoring',
+                      force=True,
+                      video_callable=video_callable)
+
     env = RewardMasker(env)
     env = SafetyEnvStateAppender(env)
     env = GymEnv(env, max_episode_length=1000)
@@ -87,26 +99,30 @@ def robust_preferences(ctxt=None, seed=1):
         hidden_nonlinearity=F.relu,
     )
 
-    label_scheduler = LabelAnnealer(final_timesteps=n_epochs,
-                                    final_labels=800,
-                                    pretrain_labels=400)
+    label_scheduler = LabelAnnealer(final_timesteps=number_epochs,
+                                    final_labels=final_labels,
+                                    pretrain_labels=pre_train_labels)
 
-    comparison_collector = SyntheticComparisonCollector(
-        24000,
-        label_scheduler)
+    if comparison_collector_type == 'synthetic':
+        comparison_collector = SyntheticComparisonCollector(
+            24000,
+            label_scheduler,
+            segment_length=segment_length
+        )
+    elif comparison_collector_type == 'human':
+        comparison_collector = HumanComparisonCollector(
+            20000,
+            label_scheduler,
+            env=env,
+            experiment_name=name,
+            segment_length=segment_length
+        )
 
     test_comparison_collector = SyntheticComparisonCollector(
         40000,
         label_scheduler,
         collect_callable=lambda i: i % 10 == 0
     )
-
-    # comparison_collector = HumanComparisonCollector(
-    #     20000,
-    #     label_scheduler,
-    #     env=env,
-    #     experiment_name=experiment_name,
-    #     segment_length=1)
 
     algo = PreferenceTRPO(env_spec=env.spec,
                           policy=policy,
@@ -115,14 +131,75 @@ def robust_preferences(ctxt=None, seed=1):
                           comparison_collector=comparison_collector,
                           test_comparison_collector=test_comparison_collector,
                           discount=0.99,
-                          center_adv=True)
+                          use_gt_rewards=use_gt_rewards,
+                          center_adv=True
+                          )
+
+    sampler_cls = LocalSampler if (monitor or local) else RaySampler
 
     trainer.setup(algo,
                   env,
-                  # sampler_cls=LocalSampler,
+                  sampler_cls=sampler_cls,
                   )
 
-    trainer.train(n_epochs=n_epochs, batch_size=4000)
+    trainer.train(n_epochs=number_epochs, batch_size=4000)
 
 
-robust_preferences(seed=1)
+def register_envs():
+
+    base_config = gym.make('Safexp-PointGoal1-v0').config
+    new_config = {
+        'robot_locations': [(0, -1.5)],
+        'robot_rot': np.pi * (1/2),
+        'goal_locations': [(0, 1.5)],
+        'hazards_num': 3,
+        'vases_num': 0,
+        'observe_vases': False,
+        'hazards_placements': None,
+        'hazards_locations': [(-1.3, 0.9), (1.3, 0.9), (0, 0)],
+        'hazards_size': 0.4,
+    }
+
+    for k, v in new_config.items():
+        assert k in base_config.keys(), 'BAD CONFIG'
+        base_config[k] = v
+
+    register(id='Safexp-PointGoalCustom0-v0',
+             entry_point='safety_gym.envs.mujoco:Engine',
+             kwargs={'config': base_config})
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='preference reward learning')
+    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--name', type=str, required=True)
+    parser.add_argument('--env_id', type=str, required=False)
+    parser.add_argument('--comparison_collector_type', type=str,
+                        required=False)
+    parser.add_argument('--number_epochs', type=int, required=False)
+    parser.add_argument('--segment_length', type=int, required=False)
+    parser.add_argument('--max_episode_length', type=int, required=False)
+    parser.add_argument('--final_labels', type=int, required=False)
+    parser.add_argument('--pre_train_labels', type=int, required=False)
+    parser.add_argument('--monitor', action='store_true', required=False)
+    parser.add_argument('--local', action='store_true', required=False)
+    parser.add_argument('--use_gt_rewards', action='store_true', required=False)
+
+    args = vars(parser.parse_args())
+    args = {k: v for k, v in args.items() if v is not None}
+
+    config = {
+        'continue_goal': False,
+        'reward_includes_cost': True,
+        'hazards_cost': 10.,
+        'reward_goal': 0,
+    }
+
+    args['name'] = (
+        args['name'] + '_' + datetime.now().strftime("%m%d%Y_%H%M%S")
+    )
+
+    kwargs = {**args, **config}
+
+    register_envs()
+    robust_preferences(**kwargs)

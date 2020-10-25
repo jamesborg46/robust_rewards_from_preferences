@@ -12,6 +12,10 @@ import time
 from utils.video import write_segment_to_video, upload_to_gcs
 
 
+def always_true(i):
+    return True
+
+
 class ComparisonCollector(PathBuffer, abc.ABC):
     """A buffer that extends PathBuffer with added functionality for sampling
     segments and collecting segment comparisons
@@ -31,7 +35,7 @@ class ComparisonCollector(PathBuffer, abc.ABC):
         self.label_scheduler = label_scheduler
         self.segment_length = segment_length
         if collect_callable is None:
-            self.collect_callable = lambda itr: True
+            self.collect_callable = always_true
         else:
             self.collect_callable = collect_callable
         self._comparisons = []
