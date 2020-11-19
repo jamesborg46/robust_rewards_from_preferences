@@ -5,3 +5,5 @@ __pycache__/
 MUJOCO_LOG.TXT
 *.mp4
 *.png
+media/
+notebooks/
