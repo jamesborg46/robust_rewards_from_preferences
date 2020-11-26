@@ -132,6 +132,7 @@ class PreferenceTRPO(TRPO):
                 assert len(eps.split()) == len(eps.to_list())
 
                 trainer.step_path = self._predict_rewards(eps.to_list())
+                breakpoint()
 
 #                 self.comparison_collector.collect(trainer.step_itr,
 #                                                   eps)

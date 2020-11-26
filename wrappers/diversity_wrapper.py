@@ -1,0 +1,75 @@
+"""Wrapper for diversity is all you need implementation for gym.Env"""
+import gym
+from gym import spaces
+import numpy as np
+
+from garage.torch import global_device
+import torch
+
+
+class DiversityWrapper(gym.Wrapper):
+
+    def __init__(self, env,  number_skills=10):
+        super().__init__(env)
+
+        self.number_skills = number_skills
+        self.original_obs_space = env.observation_space
+        self.init_new_obs_space()
+
+    def init_new_obs_space(self):
+        if isinstance(self.env.observation_space, spaces.Box) and \
+                len(self.env.observation_space.shape) == 1:
+
+            obs_size = self.env.observation_space.shape[0]
+            low = self.env.observation_space.low
+            high = self.env.observation_space.high
+
+            if not np.isscalar(low):
+                assert high.shape == low.shape
+                new_low = np.concatenate(
+                    [np.zeros(self.number_skills), low]
+                )
+                new_high = np.concatenate(
+                    [np.ones(self.number_skills), high]
+                )
+                new_obs_shape = None
+            else:
+                new_high = max(low, 1)
+                new_low = min(low, 0)
+                new_obs_shape = (obs_size + self.number_skills, )
+
+            self.observation_space = spaces.Box(
+                low=new_low,
+                high=new_high,
+                shape=new_obs_shape
+            )
+
+        else:
+            raise NotImplementedError(
+                'Only box spaces of one dimension handled in diversity mask')
+
+    # def get_diversity_reward(self, observations):
+
+    #     log_q = self.discriminator(
+    #         torch.tensor(observations).to(global_device()).reshape(1, -1)
+    #     )[0, self.skill].numpy()
+
+    #     log_p = np.log(1/self.number_skills)
+
+    #     return log_q - log_p
+
+    def reset(self):
+        self.skill = np.random.randint(low=0, high=self.number_skills)
+        self.skill_one_hot = np.zeros(self.number_skills)
+        self.skill_one_hot[self.skill] = 1
+
+        obs = self.env.reset()
+        new_obs = np.concatenate([self.skill_one_hot, obs])
+        return new_obs
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        info['gt_reward'] = reward
+        new_obs = np.concatenate([self.skill_one_hot, obs])
+        return new_obs, None, done, info
+

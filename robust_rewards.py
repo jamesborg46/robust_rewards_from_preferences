@@ -79,7 +79,7 @@ def robust_preferences(ctxt=None,
 
     env = RewardMasker(env)
     env = SafetyEnvStateAppender(env)
-    env = GymEnv(env, max_episode_length=1000)
+    env = GymEnv(env, max_episode_length=max_episode_length)
 
     trainer = Trainer(ctxt)
 
