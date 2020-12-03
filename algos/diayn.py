@@ -10,6 +10,17 @@ from garage import EpisodeBatch
 
 import torch.nn.functional as F
 
+import pickle
+
+
+def get_skill_ints(observations, number_of_skills):
+    skill_one_hot = observations[:, :number_of_skills]
+    skills = np.tile(
+        np.arange(number_of_skills),
+        (observations.shape[0], 1)
+    )[skill_one_hot.astype(bool)].flatten()
+    return skills
+
 
 class DIAYN(SAC):
 
@@ -23,6 +34,7 @@ class DIAYN(SAC):
         replay_buffer,
         *,  # Everything after this is numbers.
         number_skills=10,
+        collect_skill_freq,
         max_episode_length_eval=None,
         gradient_steps_per_itr,
         discriminator_gradient_steps_per_itr,
@@ -70,6 +82,7 @@ class DIAYN(SAC):
 
         self.discriminator = discriminator
         self.number_skills = number_skills
+        self.collect_skill_freq = collect_skill_freq
         self._discriminator_lr = discriminator_lr
         self._discriminator_gradient_steps = discriminator_gradient_steps_per_itr
         self._discriminator_optimizer = self._optimizer(
@@ -119,11 +132,14 @@ class DIAYN(SAC):
 
                 for _ in range(self._gradient_steps):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
-
-                for _ in range(self._discriminator_gradient_steps):
                     discriminator_loss = self.train_discriminator()
 
-            last_return = self._evaluate_policy(trainer.step_itr)
+                # for _ in range(self._discriminator_gradient_steps):
+                    # discriminator_loss = self.train_discriminator()
+
+            if trainer.step_itr % 25 == 0:
+                last_return = self._evaluate_policy(trainer)
+
             self._log_statistics(policy_loss,
                                  qf1_loss,
                                  qf2_loss,
@@ -133,7 +149,62 @@ class DIAYN(SAC):
 
         return np.mean(last_return)
 
-    def _evaluate_policy(self, epoch):
+    def _actor_objective(self, samples_data, new_actions, log_pi_new_actions):
+        """Compute the Policy/Actor loss.
+        Args:
+            samples_data (dict): Transitions(S,A,R,S') that are sampled from
+                the replay buffer. It should have the keys 'observation',
+                'action', 'reward', 'terminal', and 'next_observations'.
+            new_actions (torch.Tensor): Actions resampled from the policy based
+                based on the Observations, obs, which were sampled from the
+                replay buffer. Shape is (action_dim, buffer_batch_size).
+            log_pi_new_actions (torch.Tensor): Log probability of the new
+                actions on the TanhNormal distributions that they were sampled
+                from. Shape is (1, buffer_batch_size).
+        Note:
+            samples_data's entries should be torch.Tensor's with the following
+            shapes:
+                observation: :math:`(N, O^*)`
+                action: :math:`(N, A^*)`
+                reward: :math:`(N, 1)`
+                terminal: :math:`(N, 1)`
+                next_observation: :math:`(N, O^*)`
+        Returns:
+            torch.Tensor: loss from the Policy/Actor.
+        """
+        obs = samples_data['observation']
+        with torch.no_grad():
+            alpha = self._get_log_alpha(samples_data).exp()
+        min_q_new_actions = torch.min(self._qf1(obs, new_actions),
+                                      self._qf2(obs, new_actions))
+        policy_objective = ((alpha * log_pi_new_actions) -
+                            min_q_new_actions.flatten()).mean()
+
+        tabular.record('Policy/AverageEntropy',
+                       -torch.mean(log_pi_new_actions).cpu().detach().numpy())
+
+        skills = get_skill_ints(obs.cpu().detach().numpy(), self.number_skills)
+        skills, counts = np.unique(skills, return_counts=True)
+        tabular.record('Policy/NumberSkills', len(skills))
+        tabular.record('Policy/SkillCountMax', counts.max())
+        tabular.record('Policy/SkillCountMin', counts.min())
+
+        return policy_objective
+
+    def get_eval_episodes(self, num_eval_episodes):
+        eval_episodes = obtain_evaluation_episodes(
+            self.policy,
+            self._eval_env,
+            self._max_episode_length_eval,
+            num_eps=num_eval_episodes,
+            deterministic=self._use_deterministic_evaluation)
+        eval_episodes = EpisodeBatch.from_list(
+            self._eval_env.spec,
+            self.update_diversity_rewards(eval_episodes.to_list())
+        )
+        return eval_episodes
+
+    def _evaluate_policy(self, trainer):
         """Evaluate the performance of the policy via deterministic sampling.
 
             Statistics such as (average) discounted return and success rate are
@@ -147,19 +218,17 @@ class DIAYN(SAC):
                 episodes
 
         """
-        eval_episodes = obtain_evaluation_episodes(
-            self.policy,
-            self._eval_env,
-            self._max_episode_length_eval,
-            num_eps=self._num_evaluation_episodes,
-            deterministic=self._use_deterministic_evaluation)
-        eval_episodes = EpisodeBatch.from_list(
-            self._eval_env.spec,
-            self.update_diversity_rewards(eval_episodes.to_list())
-        )
+        epoch = trainer.step_itr
+        eval_episodes = self.get_eval_episodes(self._num_evaluation_episodes)
         last_return = log_performance(epoch,
                                       eval_episodes,
                                       discount=self._discount)
+
+        if epoch % self.collect_skill_freq == 0:
+            with open(trainer._snapshotter.snapshot_dir +
+                      '/eps_{}'.format(epoch), 'wb') as f:
+                pickle.dump(eval_episodes, f)
+
         return last_return
 
     def train_discriminator(self):
@@ -239,4 +308,3 @@ class DIAYN(SAC):
             start += length
 
         return step_path
-

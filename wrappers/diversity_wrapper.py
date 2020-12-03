@@ -15,6 +15,7 @@ class DiversityWrapper(gym.Wrapper):
         self.number_skills = number_skills
         self.original_obs_space = env.observation_space
         self.init_new_obs_space()
+        self.skill = None
 
     def init_new_obs_space(self):
         if isinstance(self.env.observation_space, spaces.Box) and \
@@ -59,7 +60,10 @@ class DiversityWrapper(gym.Wrapper):
     #     return log_q - log_p
 
     def reset(self):
-        self.skill = np.random.randint(low=0, high=self.number_skills)
+        if self.skill is None:
+            self.skill = np.random.randint(low=0, high=self.number_skills)
+        else:
+            self.skill = (self.skill + 1) % self.number_skills
         self.skill_one_hot = np.zeros(self.number_skills)
         self.skill_one_hot[self.skill] = 1
 

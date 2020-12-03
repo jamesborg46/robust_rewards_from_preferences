@@ -19,7 +19,6 @@ class SafetyEnvStateAppender(gym.Wrapper):
         return obs, reward, done, info
 
     def load_model(self, model_xml):
-        self.env.reset()
         self.env.world.sim = MjSim(load_model_from_xml(model_xml))
 
     def render_state(self,

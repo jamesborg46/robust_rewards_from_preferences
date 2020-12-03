@@ -13,7 +13,7 @@ from garage.experiment.deterministic import set_seed
 from garage import wrap_experiment
 from garage.envs import GymEnv
 from garage.replay_buffer import PathBuffer
-from garage.sampler import LocalSampler
+from garage.sampler import LocalSampler, RaySampler
 from garage.torch import set_gpu_mode
 from garage.torch.algos import SAC
 from garage.torch.policies import TanhGaussianMLPPolicy
@@ -21,7 +21,7 @@ from garage.torch.q_functions import ContinuousMLPQFunction
 from garage.trainer import Trainer
 from garage.torch.modules import MLPModule
 
-from wrappers import DiversityWrapper
+from wrappers import DiversityWrapper, SafetyEnvStateAppender
 from algos import DIAYN
 
 import json
@@ -30,15 +30,17 @@ import argparse
 import os
 
 
-@wrap_experiment(name_parameters='passed')
+@wrap_experiment(name_parameters='passed',
+                 snapshot_gap=25,
+                 snapshot_mode='gap')
 def diversity_is_all_you_need(ctxt=None,
                               seed=1,
                               name='EXP',
                               number_skills=10,
                               number_epochs=1000,
                               max_episode_length=1000,
+                              alpha=0.1,
                               env_id='Safexp-PointGoal0-v0',
-                              monitor=False,
                               **kwargs,
                               ):
 
@@ -55,18 +57,8 @@ def diversity_is_all_you_need(ctxt=None,
     env = Engine(config)
     env.metadata['render.modes'] = ['rgb_array']
 
-    if monitor:
-        # Defining this because pickle doesn't pickle lambda functions
-        def video_callable(i):
-            return (i % 200 == 0) and (i != 0)
-
-        env = Monitor(env,
-                      ctxt.snapshot_dir + '/monitoring',
-                      force=True,
-                      video_callable=video_callable)
-
-    env = DiversityWrapper(env)
-    # env = SafetyEnvStateAppender(env)
+    env = DiversityWrapper(env, number_skills=number_skills)
+    env = SafetyEnvStateAppender(env)
     env = GymEnv(env, max_episode_length=max_episode_length)
 
     trainer = Trainer(ctxt)
@@ -74,14 +66,14 @@ def diversity_is_all_you_need(ctxt=None,
     skill_discriminator = MLPModule(
         input_dim=env.original_obs_space.shape[0],
         output_dim=number_skills,
-        hidden_sizes=(16, 16),
+        hidden_sizes=(256, 256),
         hidden_nonlinearity=nn.ReLU,
         output_nonlinearity=nn.LogSoftmax,
     )
 
     policy = TanhGaussianMLPPolicy(
         env_spec=env.spec,
-        hidden_sizes=[128, 128],
+        hidden_sizes=[256, 256],
         hidden_nonlinearity=nn.ReLU,
         output_nonlinearity=None,
         min_std=np.exp(-20.),
@@ -98,26 +90,13 @@ def diversity_is_all_you_need(ctxt=None,
 
     replay_buffer = PathBuffer(capacity_in_transitions=int(1e6))
 
-    # sac = SAC(env_spec=env.spec,
-    #           policy=policy,
-    #           qf1=qf1,
-    #           qf2=qf2,
-    #           gradient_steps_per_itr=1000,
-    #           max_episode_length_eval=1000,
-    #           replay_buffer=replay_buffer,
-    #           min_buffer_size=1e4,
-    #           target_update_tau=5e-3,
-    #           discount=0.99,
-    #           buffer_batch_size=256,
-    #           reward_scale=1.,
-    #           steps_per_epoch=1)
-
     sac = DIAYN(env_spec=env.spec,
                 policy=policy,
                 qf1=qf1,
                 qf2=qf2,
                 discriminator=skill_discriminator,
                 number_skills=number_skills,
+                collect_skill_freq=250,
                 gradient_steps_per_itr=1000,
                 discriminator_gradient_steps_per_itr=1000,
                 max_episode_length_eval=1000,
@@ -126,7 +105,9 @@ def diversity_is_all_you_need(ctxt=None,
                 target_update_tau=5e-3,
                 discount=0.99,
                 buffer_batch_size=256,
+                num_evaluation_episodes=number_skills,
                 reward_scale=1.,
+                fixed_alpha=alpha,
                 steps_per_epoch=1)
 
     if torch.cuda.is_available():
@@ -134,8 +115,13 @@ def diversity_is_all_you_need(ctxt=None,
     else:
         set_gpu_mode(False)
     sac.to()
-    trainer.setup(algo=sac, env=env, sampler_cls=LocalSampler)
-    trainer.train(n_epochs=number_epochs, batch_size=1000)
+    trainer.setup(
+        algo=sac,
+        env=env,
+        sampler_cls=RaySampler,
+        # worker_class=DefaultWorker
+    )
+    trainer.train(n_epochs=number_epochs, batch_size=10000)
 
 
 def register_envs():
@@ -226,7 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('--number_epochs', type=int, required=False)
     parser.add_argument('--seed', type=int, required=False)
     parser.add_argument('--max_episode_length', type=int, required=False)
-    parser.add_argument('--monitor', action='store_true', required=False)
+    parser.add_argument('--alpha', type=float, required=False)
 
     args = vars(parser.parse_args())
     args = {k: v for k, v in args.items() if v is not None}
