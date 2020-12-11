@@ -23,7 +23,7 @@ from gym.wrappers import Monitor
 from wrappers import RewardMasker, SafetyEnvStateAppender
 from algos import PreferenceTRPO
 from buffers import SyntheticComparisonCollector, HumanComparisonCollector, LabelAnnealer
-from reward_predictors import MLPRewardPredictor
+from reward_predictors import MLPRewardPredictor, BNNRewardPredictor
 
 import numpy as np
 
@@ -47,6 +47,12 @@ def robust_preferences(ctxt=None,
                        monitor=False,
                        local=False,
                        use_gt_rewards=False,
+                       discount=0.99,
+                       val_opt_its=100,
+                       val_opt_lr=1e-3,
+                       reward_opt_its=20,
+                       reward_opt_lr=1e-3,
+                       center_adv=True,
                        precollected_trajectories=None,
                        **kwargs):
 
@@ -101,6 +107,10 @@ def robust_preferences(ctxt=None,
         hidden_nonlinearity=F.relu,
     )
 
+#     reward_predictor = BNNRewardPredictor(
+#         env_spec=env.spec,
+#     )
+
     label_scheduler = LabelAnnealer(final_timesteps=number_epochs,
                                     final_labels=final_labels,
                                     pretrain_labels=pre_train_labels)
@@ -152,9 +162,13 @@ def robust_preferences(ctxt=None,
                           reward_predictor=reward_predictor,
                           comparison_collector=comparison_collector,
                           test_comparison_collector=test_comparison_collector,
-                          discount=0.99,
                           use_gt_rewards=use_gt_rewards,
-                          center_adv=True
+                          discount=discount,
+                          val_opt_its=val_opt_its,
+                          val_opt_lr=val_opt_lr,
+                          reward_opt_its=reward_opt_its,
+                          reward_opt_lr=reward_opt_lr,
+                          center_adv=center_adv
                           )
 
     sampler_cls = LocalSampler if (monitor or local) else RaySampler
@@ -264,6 +278,12 @@ if __name__ == '__main__':
     parser.add_argument('--monitor', action='store_true', required=False)
     parser.add_argument('--local', action='store_true', required=False)
     parser.add_argument('--use_gt_rewards', action='store_true', required=False)
+    parser.add_argument('--discount', type=float, required=False)
+    parser.add_argument('--val_opt_its', type=int, required=False)
+    parser.add_argument('--val_opt_lr', type=float, required=False)
+    parser.add_argument('--reward_opt_its', type=int, required=False)
+    parser.add_argument('--reward_opt_lr', type=float, required=False)
+    parser.add_argument('--center_adv', action='store_true', default=False)
 
     args = vars(parser.parse_args())
     args = {k: v for k, v in args.items() if v is not None}

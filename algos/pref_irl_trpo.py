@@ -69,13 +69,17 @@ class PreferenceTRPO(TRPO):
                  policy_ent_coeff=0.0,
                  use_softplus_entropy=False,
                  stop_entropy_gradient=False,
+                 val_opt_its=100,
+                 val_opt_lr=1e-3,
+                 reward_opt_its=20,
+                 reward_opt_lr=1e-3,
                  entropy_method='no_entropy'):
 
         if vf_optimizer is None:
             vf_optimizer = OptimizerWrapper(
-                (torch.optim.Adam, dict(lr=1e-3)),
+                (torch.optim.Adam, dict(lr=val_opt_lr)),
                 value_function,
-                max_optimization_epochs=100,
+                max_optimization_epochs=val_opt_its,
                 minibatch_size=128)
 
         super().__init__(env_spec=env_spec,
@@ -106,7 +110,8 @@ class PreferenceTRPO(TRPO):
             self._reward_predictor_optimizer = reward_predictor_optimizer
         else:
             self._reward_predictor_optimizer = OptimizerWrapper(
-                torch.optim.Adam,
+                (torch.optim.Adam, dict(lr=1e-3)),
+                # torch.optim.Adam,
                 self._reward_predictor,
                 max_optimization_epochs=20
             )
@@ -264,9 +269,12 @@ class PreferenceTRPO(TRPO):
         with torch.no_grad():
             if not self.use_gt_rewards:
                 reward_predictor_loss_before = (
-                    self._reward_predictor.compute_preference_loss(left_segs,
-                                                                   right_segs,
-                                                                   preferences)
+                    self._reward_predictor.compute_preference_loss(
+                        left_segs,
+                        right_segs,
+                        preferences,
+                        # dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
+                    )
                 )
             policy_loss_before = self._compute_loss_with_adv(
                 obs_flat, actions_flat, rewards_flat, advs_flat)
@@ -280,9 +288,12 @@ class PreferenceTRPO(TRPO):
         with torch.no_grad():
             if not self.use_gt_rewards:
                 reward_predictor_loss_after = (
-                    self._reward_predictor.compute_preference_loss(left_segs,
-                                                                   right_segs,
-                                                                   preferences)
+                    self._reward_predictor.compute_preference_loss(
+                        left_segs,
+                        right_segs,
+                        preferences,
+                        # dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
+                    )
                 )
             policy_loss_after = self._compute_loss_with_adv(
                 obs_flat, actions_flat, rewards_flat, advs_flat)
@@ -347,11 +358,11 @@ class PreferenceTRPO(TRPO):
                 (float).
         """
         self._reward_predictor_optimizer.zero_grad()
-        self._reward_predictor.propagate_preference_loss(
+        loss = self._reward_predictor.propagate_preference_loss(
             left_segs,
             right_segs,
             prefs,
-            dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
+            # dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
          )
         self._reward_predictor_optimizer.step()
 

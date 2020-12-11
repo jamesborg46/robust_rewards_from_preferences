@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import math
-
 
 def batch_linear(input, weight, bias):
     return torch.bmm(input, torch.transpose(weight, 1, 2)) + bias.unsqueeze(1)
@@ -104,16 +102,14 @@ class DenseVariational(nn.Module):
         return empirical_complexity_loss
 
     def analytical_complexity_loss(self, weight_prior_dist, bias_prior_dist):
-        weight_mu = self.weight_mu
-        bias_mu = self.bias_mu
 
         weights_kl_loss = torch.sum(
-            torch.distributions.kl_divergence(self.weight_dist,
+            torch.distributions.kl.kl_divergence(self.weight_dist,
                                               weight_prior_dist)
         )
 
         bias_kl_loss = torch.sum(
-            torch.distributions.kl_divergence(self.bias_dist,
+            torch.distributions.kl.kl_divergence(self.bias_dist,
                                               bias_prior_dist)
         )
 
@@ -190,7 +186,7 @@ class BayesianNN(nn.Module):
                  bias_prior_scale=[1, 0.0001],
                  hidden_sizes=[32, 32],
                  activation_function=None,
-                 prior_mix=1,
+                 prior_mix=1.,
                  empirical_complexity_loss=False,
                  explicit_gradient=False):
 
@@ -266,7 +262,6 @@ class BayesianNN(nn.Module):
         )
         return bias_prior_dist
 
-
     def reset_parameters(self,
                          **kwargs):
         self.dense_variational_1.reset_parameters(**kwargs)
@@ -316,4 +311,3 @@ class BayesianNN(nn.Module):
         else:
             loss = torch.mean(sampled_losses)
             loss.backward()
-

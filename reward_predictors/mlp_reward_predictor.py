@@ -70,16 +70,7 @@ class MLPRewardPredictor(nn.Module):
             output_b_init=output_b_init,
             layer_normalization=layer_normalization)
 
-    def propagate_preference_loss(self, left_segs, right_segs, prefs):
-        r"""Compute mean value of loss.
-        Args:
-            obs (torch.Tensor): Observation from the environment
-                with shape :math:`(N \dot [T], O*)`.
-            returns (torch.Tensor): Acquired returns with shape :math:`(N, )`.
-        Returns:
-            torch.Tensor: Calculated negative mean scalar value of
-                objective (float).
-        """
+    def compute_preference_loss(self, left_segs, right_segs, prefs):
         if not left_segs.shape == right_segs.shape:
             raise ValueError('Left and Right segs should have the same shape')
 
@@ -95,8 +86,21 @@ class MLPRewardPredictor(nn.Module):
         logits = output.reshape(2, batch_size).transpose(0, 1)
 
         loss = nn.functional.cross_entropy(logits, prefs)
+        return loss
 
+    def propagate_preference_loss(self, left_segs, right_segs, prefs):
+        r"""Compute mean value of loss.
+        Args:
+            obs (torch.Tensor): Observation from the environment
+                with shape :math:`(N \dot [T], O*)`.
+            returns (torch.Tensor): Acquired returns with shape :math:`(N, )`.
+        Returns:
+            torch.Tensor: Calculated negative mean scalar value of
+                objective (float).
+        """
+        loss = self.compute_preference_loss(left_segs, right_segs, prefs)
         loss.backward()
+        return loss
 
     # pylint: disable=arguments-differ
     def forward(self, obs):

@@ -2,7 +2,6 @@
 import torch
 from torch import nn
 
-from garage.torch.modules import MLPModule
 from reward_predictors.bnn import BayesianNN
 
 
@@ -45,7 +44,15 @@ class BNNRewardPredictor(nn.Module):
                  weight_prior_scale=[0.1, 0.00001],
                  bias_prior_scale=[1, 0.0001],
                  hidden_sizes=[32, 32],
-                 prior_mix=1,
+                 prior_mix=1.,
+                 weight_mu_mean_init=0.1,
+                 weight_mu_scale_init=0.1,
+                 weight_rho_mean_init=0.1,
+                 weight_rho_scale_init=0.1,
+                 bias_mu_mean_init=0.1,
+                 bias_mu_scale_init=0.1,
+                 bias_rho_mean_init=0.1,
+                 bias_rho_scale_init=0.1,
                  name='BNNRewardPredictor'):
 
         super().__init__()
@@ -62,6 +69,20 @@ class BNNRewardPredictor(nn.Module):
             bias_prior_scale=bias_prior_scale,
             hidden_sizes=hidden_sizes,
             prior_mix=prior_mix,
+            empirical_complexity_loss=True,
+        )
+
+
+        # parameter initialization
+        self.module.reset_parameters(
+             weight_mu_mean=weight_mu_mean_init,
+             weight_mu_scale=weight_mu_scale_init,
+             weight_rho_mean=weight_rho_mean_init,
+             weight_rho_scale=weight_rho_scale_init,
+             bias_mu_mean=bias_mu_mean_init,
+             bias_mu_scale=bias_mu_scale_init,
+             bias_rho_mean=bias_rho_mean_init,
+             bias_rho_scale=bias_rho_scale_init,
         )
 
     def sampled_cross_entropies(self, input, target, reduction='mean'):
@@ -74,6 +95,35 @@ class BNNRewardPredictor(nn.Module):
         sampled_cross_entropies = torch.stack(sampled_cross_entropies)
 
         return sampled_cross_entropies
+
+    def compute_preference_loss(self,
+                                left_segs,
+                                right_segs,
+                                prefs,
+                                dataset_size,
+                                samples=1):
+
+        if not left_segs.shape == right_segs.shape:
+            raise ValueError('Left and Right segs should have the same shape')
+
+        batch_size, segment_length, obs_dim = left_segs.shape
+
+        inp = (torch.cat([left_segs, right_segs])
+                    .reshape(2 * batch_size * segment_length, obs_dim))
+
+        output = (self.module(inp, samples)
+                      .reshape(samples, 2*batch_size, segment_length)
+                      .sum(dim=-1))
+
+        logits = output.reshape(samples, 2, batch_size).transpose(1, 2)
+
+        complexity_cost = self.module.complexity_cost()
+        likelihood_cost = self.sampled_cross_entropies(
+            logits, prefs, reduction='mean')
+        sampled_losses = (
+            (1 / (dataset_size)) * complexity_cost + likelihood_cost
+        )
+        return torch.mean(sampled_losses)
 
     def propagate_preference_loss(self,
                                   left_segs,
@@ -111,6 +161,9 @@ class BNNRewardPredictor(nn.Module):
             (1 / (dataset_size)) * complexity_cost + likelihood_cost
         )
         self.module.propagate_loss(sampled_losses)
+        breakpoint()
+
+        return torch.mean(sampled_losses)
 
     # pylint: disable=arguments-differ
     def forward(self, obs, samples=1):
@@ -122,4 +175,6 @@ class BNNRewardPredictor(nn.Module):
             torch.Tensor: Calculated baselines given observations with
                 shape :math:`(P, O*)`.
         """
-        return self.module(obs, samples)
+
+        logits = self.module(obs, samples)
+        return logits.mean(dim=0)
