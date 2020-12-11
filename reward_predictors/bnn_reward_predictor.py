@@ -3,9 +3,10 @@ import torch
 from torch import nn
 
 from garage.torch.modules import MLPModule
+from reward_predictors.bnn import BayesianNN
 
 
-class MLPRewardPredictor(nn.Module):
+class BNNRewardPredictor(nn.Module):
     """Gaussian MLP Value Function with Model.
     It fits the input data to a gaussian distribution estimated by
     a MLP.
@@ -41,15 +42,11 @@ class MLPRewardPredictor(nn.Module):
 
     def __init__(self,
                  env_spec,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 layer_normalization=False,
-                 name='MLPRewardPredictor'):
+                 weight_prior_scale=[0.1, 0.00001],
+                 bias_prior_scale=[1, 0.0001],
+                 hidden_sizes=[32, 32],
+                 prior_mix=1,
+                 name='BNNRewardPredictor'):
 
         super().__init__()
 
@@ -58,19 +55,32 @@ class MLPRewardPredictor(nn.Module):
 
         self.name = name
 
-        self.module = MLPModule(
-            input_dim=input_dim,
-            output_dim=output_dim,
+        self.module = BayesianNN(
+            input_dims=input_dim,
+            output_dims=output_dim,
+            weight_prior_scale=weight_prior_scale,
+            bias_prior_scale=bias_prior_scale,
             hidden_sizes=hidden_sizes,
-            hidden_nonlinearity=hidden_nonlinearity,
-            hidden_w_init=hidden_w_init,
-            hidden_b_init=hidden_b_init,
-            output_nonlinearity=output_nonlinearity,
-            output_w_init=output_w_init,
-            output_b_init=output_b_init,
-            layer_normalization=layer_normalization)
+            prior_mix=prior_mix,
+        )
 
-    def propagate_preference_loss(self, left_segs, right_segs, prefs):
+    def sampled_cross_entropies(self, input, target, reduction='mean'):
+        sampled_cross_entropies = []
+        for sample in input:
+            sampled_cross_entropies.append(
+                nn.functional.cross_entropy(sample, target, reduction=reduction)
+            )
+
+        sampled_cross_entropies = torch.stack(sampled_cross_entropies)
+
+        return sampled_cross_entropies
+
+    def propagate_preference_loss(self,
+                                  left_segs,
+                                  right_segs,
+                                  prefs,
+                                  dataset_size,
+                                  samples=1):
         r"""Compute mean value of loss.
         Args:
             obs (torch.Tensor): Observation from the environment
@@ -88,18 +98,22 @@ class MLPRewardPredictor(nn.Module):
         inp = (torch.cat([left_segs, right_segs])
                     .reshape(2 * batch_size * segment_length, obs_dim))
 
-        output = (self.module(inp)
-                      .reshape(2*batch_size, segment_length)
-                      .sum(dim=1))
+        output = (self.module(inp, samples)
+                      .reshape(samples, 2*batch_size, segment_length)
+                      .sum(dim=-1))
 
-        logits = output.reshape(2, batch_size).transpose(0, 1)
+        logits = output.reshape(samples, 2, batch_size).transpose(1, 2)
 
-        loss = nn.functional.cross_entropy(logits, prefs)
-
-        loss.backward()
+        complexity_cost = self.module.complexity_cost()
+        likelihood_cost = self.sampled_cross_entropies(
+            logits, prefs, reduction='mean')
+        sampled_losses = (
+            (1 / (dataset_size)) * complexity_cost + likelihood_cost
+        )
+        self.module.propagate_loss(sampled_losses)
 
     # pylint: disable=arguments-differ
-    def forward(self, obs):
+    def forward(self, obs, samples=1):
         r"""Predict value based on paths.
         Args:
             obs (torch.Tensor): Observation from the environment
@@ -108,4 +122,4 @@ class MLPRewardPredictor(nn.Module):
             torch.Tensor: Calculated baselines given observations with
                 shape :math:`(P, O*)`.
         """
-        return self.module(obs)
+        return self.module(obs, samples)

@@ -54,6 +54,7 @@ def robust_preferences(ctxt=None,
     """
     TODO DOCS
     """
+    number_epochs = number_epochs + 1
 
     set_seed(seed)
     env = gym.make(env_id)
@@ -119,10 +120,12 @@ def robust_preferences(ctxt=None,
             precollected.sample_comparison()
 
         precollected_comparisons = precollected._comparisons
+    else:
+        precollected_comparisons = []
 
     if comparison_collector_type == 'synthetic':
         comparison_collector = SyntheticComparisonCollector(
-            24000,
+            4000,
             label_scheduler,
             segment_length=segment_length,
             precollected_comparisons=precollected_comparisons,

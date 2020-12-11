@@ -139,7 +139,7 @@ class PreferenceTRPO(TRPO):
 #                 self.test_comparison_collector.collect(trainer.step_itr,
 #                                                        eps.split()[0])
 
-                if trainer.step_itr % 10 == 0:
+                if trainer.step_itr % 50 == 0:
                     with open(trainer._snapshotter.snapshot_dir
                               + '/comparisons_{}.pkl'
                               .format(trainer.step_itr), 'wb') as f:
@@ -172,7 +172,7 @@ class PreferenceTRPO(TRPO):
         corrs = []
         _paths = []
         # for path in self.comparison_collector.step_paths():
-        for path in self.comparison_collector._paths:
+        for path in self.test_comparison_collector._paths:
             _paths.append(path)
             paths = self._predict_rewards([path])
             predicted_rewards.append(path['predicted_rewards'].flatten())
@@ -347,10 +347,12 @@ class PreferenceTRPO(TRPO):
                 (float).
         """
         self._reward_predictor_optimizer.zero_grad()
-        loss = self._reward_predictor.compute_preference_loss(left_segs,
-                                                              right_segs,
-                                                              prefs)
-        loss.backward()
+        self._reward_predictor.propagate_preference_loss(
+            left_segs,
+            right_segs,
+            prefs,
+            dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
+         )
         self._reward_predictor_optimizer.step()
 
         return loss
