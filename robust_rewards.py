@@ -31,11 +31,9 @@ from datetime import datetime
 import os
 import argparse
 import json
+import pickle
 
 
-@wrap_experiment(name_parameters='passed',
-                 snapshot_gap=25,
-                 snapshot_mode='gap')
 def robust_preferences(ctxt=None,
                        seed=1,
                        name='EXP',
@@ -49,6 +47,7 @@ def robust_preferences(ctxt=None,
                        monitor=False,
                        local=False,
                        use_gt_rewards=False,
+                       precollected_trajectories=None,
                        **kwargs):
 
 
@@ -105,11 +104,28 @@ def robust_preferences(ctxt=None,
                                     final_labels=final_labels,
                                     pretrain_labels=pre_train_labels)
 
+    if precollected_trajectories is not None:
+        with open(precollected_trajectories, 'rb') as f:
+            precollected = pickle.load(f)
+
+        obs_space = env.observation_space.shape[0]
+
+        for i in range(len(precollected._paths)):
+            precollected._paths[i]['observations'] = (
+                precollected._paths[i]['observations'][:, -obs_space:]
+            )
+
+        for _ in range(pre_train_labels):
+            precollected.sample_comparison()
+
+        precollected_comparisons = precollected._comparisons
+
     if comparison_collector_type == 'synthetic':
         comparison_collector = SyntheticComparisonCollector(
             24000,
             label_scheduler,
-            segment_length=segment_length
+            segment_length=segment_length,
+            precollected_comparisons=precollected_comparisons,
         )
     elif comparison_collector_type == 'human':
         comparison_collector = HumanComparisonCollector(
@@ -117,7 +133,8 @@ def robust_preferences(ctxt=None,
             label_scheduler,
             env=env,
             experiment_name=name,
-            segment_length=segment_length
+            segment_length=segment_length,
+            precollected_comparisons=precollected_comparisons
         )
 
     test_comparison_collector = SyntheticComparisonCollector(
@@ -234,6 +251,8 @@ if __name__ == '__main__':
     parser.add_argument('--env_id', type=str, required=False)
     parser.add_argument('--comparison_collector_type', type=str,
                         required=False)
+    parser.add_argument('--precollected_trajectories', type=str,
+                        required=False)
     parser.add_argument('--number_epochs', type=int, required=False)
     parser.add_argument('--segment_length', type=int, required=False)
     parser.add_argument('--max_episode_length', type=int, required=False)
@@ -261,4 +280,11 @@ if __name__ == '__main__':
     kwargs = {**args, **config}
 
     register_envs()
+
+    robust_preferences = wrap_experiment(
+        robust_preferences,
+        name=args['name'],
+        snapshot_gap=25,
+        snapshot_mode='gap'
+    )
     robust_preferences(**kwargs)

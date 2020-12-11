@@ -31,7 +31,8 @@ class ComparisonCollector(abc.ABC):
                  capacity_in_transitions,
                  label_scheduler,
                  collect_callable=None,
-                 segment_length=1,):
+                 segment_length=1,
+                 precollected_comparisons=[]):
 
         # super().__init__(capacity_in_transitions)
         self._capacity = capacity_in_transitions
@@ -42,7 +43,7 @@ class ComparisonCollector(abc.ABC):
         else:
             self.collect_callable = collect_callable
 
-        self._comparisons = []
+        self._comparisons = precollected_comparisons
         self._paths = collections.deque()
         self.n_transitions_stored = 0
 

@@ -49,16 +49,6 @@ class DiversityWrapper(gym.Wrapper):
             raise NotImplementedError(
                 'Only box spaces of one dimension handled in diversity mask')
 
-    # def get_diversity_reward(self, observations):
-
-    #     log_q = self.discriminator(
-    #         torch.tensor(observations).to(global_device()).reshape(1, -1)
-    #     )[0, self.skill].numpy()
-
-    #     log_p = np.log(1/self.number_skills)
-
-    #     return log_q - log_p
-
     def reset(self):
         if self.skill is None:
             self.skill = np.random.randint(low=0, high=self.number_skills)
