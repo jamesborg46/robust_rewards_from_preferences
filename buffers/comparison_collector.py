@@ -46,6 +46,10 @@ class ComparisonCollector(abc.ABC):
         self._paths = collections.deque()
         self.n_transitions_stored = 0
 
+    def flush(self):
+        self._comparisons = []
+        self.n_transitions_stored = 0
+
     @staticmethod
     def _get_path_length(path):
         """Get path length.

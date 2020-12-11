@@ -132,7 +132,6 @@ class PreferenceTRPO(TRPO):
                 assert len(eps.split()) == len(eps.to_list())
 
                 trainer.step_path = self._predict_rewards(eps.to_list())
-                breakpoint()
 
 #                 self.comparison_collector.collect(trainer.step_itr,
 #                                                   eps)
@@ -366,12 +365,6 @@ class PreferenceTRPO(TRPO):
             self.comparison_collector.add_episode_batch(0,
                                                         eps.env_spec,
                                                         eps.to_list())
-
-            eps = trainer.obtain_episodes(0)
-            # self.test_comparison_collector.add_episode_batch(0, eps)
-            self.test_comparison_collector.add_episode_batch(0,
-                                                             eps.env_spec,
-                                                             eps.to_list())
 
         logger.log('acquiring comparisons')
         while self.comparison_collector.requires_more_comparisons(0):

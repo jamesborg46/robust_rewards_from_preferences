@@ -33,14 +33,16 @@ import argparse
 import json
 
 
-@wrap_experiment(name_parameters='passed')
+@wrap_experiment(name_parameters='passed',
+                 snapshot_gap=25,
+                 snapshot_mode='gap')
 def robust_preferences(ctxt=None,
                        seed=1,
                        name='EXP',
                        env_id='Safexp-PointGoal0-v0',
                        comparison_collector_type='synthetic',
                        number_epochs=1000,
-                       segment_length=1,
+                       segment_length=20,
                        max_episode_length=1000,
                        final_labels=1000,
                        pre_train_labels=400,
