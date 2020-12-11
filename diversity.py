@@ -97,8 +97,8 @@ def diversity_is_all_you_need(ctxt=None,
                 discriminator=skill_discriminator,
                 number_skills=number_skills,
                 collect_skill_freq=250,
-                gradient_steps_per_itr=1000,
-                discriminator_gradient_steps_per_itr=1000,
+                gradient_steps_per_itr=300,
+                discriminator_gradient_steps_per_itr=300,
                 max_episode_length_eval=1000,
                 replay_buffer=replay_buffer,
                 min_buffer_size=1e4,
@@ -108,7 +108,8 @@ def diversity_is_all_you_need(ctxt=None,
                 num_evaluation_episodes=number_skills,
                 reward_scale=1.,
                 fixed_alpha=alpha,
-                steps_per_epoch=1)
+                steps_per_epoch=1,
+                use_deterministic_evaluation=False)
 
     if torch.cuda.is_available():
         set_gpu_mode(True)
@@ -121,7 +122,7 @@ def diversity_is_all_you_need(ctxt=None,
         sampler_cls=RaySampler,
         # worker_class=DefaultWorker
     )
-    trainer.train(n_epochs=number_epochs, batch_size=10000)
+    trainer.train(n_epochs=number_epochs, batch_size=3000)
 
 
 def register_envs():

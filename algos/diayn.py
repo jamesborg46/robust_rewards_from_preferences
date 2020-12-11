@@ -113,9 +113,9 @@ class DIAYN(SAC):
                     batch_size = None
                 trainer.step_path = trainer.obtain_samples(
                     trainer.step_itr, batch_size)
-                trainer.step_path = self.update_diversity_rewards(
-                    trainer.step_path)
-                path_returns = []
+                # trainer.step_path = self.update_diversity_rewards(
+                #     trainer.step_path)
+                # path_returns = []
                 for path in trainer.step_path:
                     self.replay_buffer.add_path(
                         dict(observation=path['observations'],
@@ -126,9 +126,9 @@ class DIAYN(SAC):
                                  step_type == StepType.TERMINAL
                                  for step_type in path['step_types']
                              ]).reshape(-1, 1)))
-                    path_returns.append(sum(path['rewards']))
-                assert len(path_returns) == len(trainer.step_path)
-                self.episode_rewards.append(np.mean(path_returns))
+                    # path_returns.append(sum(path['rewards']))
+                # assert len(path_returns) == len(trainer.step_path)
+                # self.episode_rewards.append(np.mean(path_returns))
 
                 for _ in range(self._gradient_steps):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
@@ -144,10 +144,43 @@ class DIAYN(SAC):
                                  qf1_loss,
                                  qf2_loss,
                                  discriminator_loss)
+
             tabular.record('TotalEnvSteps', trainer.total_env_steps)
+            tabular.record(
+                'Policy/AverageActionStd',
+                np.mean([np.exp(path['agent_infos']['log_std']) for
+                         path in trainer.step_path])
+            )
+
             trainer.step_itr += 1
 
         return np.mean(last_return)
+
+    def train_once(self, itr=None, paths=None):
+        """Complete 1 training iteration of SAC.
+
+        Args:
+            itr (int): Iteration number. This argument is deprecated.
+            paths (list[dict]): A list of collected paths.
+                This argument is deprecated.
+
+        Returns:
+            torch.Tensor: loss from actor/policy network after optimization.
+            torch.Tensor: loss from 1st q-function after optimization.
+            torch.Tensor: loss from 2nd q-function after optimization.
+
+        """
+        del itr
+        del paths
+        if self.replay_buffer.n_transitions_stored >= self._min_buffer_size:
+            samples = self.replay_buffer.sample_transitions(
+                self._buffer_batch_size)
+            samples = self.update_diversity_rewards_in_buffer_samples(samples)
+            samples = dict_np_to_torch(samples)
+            policy_loss, qf1_loss, qf2_loss = self.optimize_policy(samples)
+            self._update_targets()
+
+        return policy_loss, qf1_loss, qf2_loss
 
     def _actor_objective(self, samples_data, new_actions, log_pi_new_actions):
         """Compute the Policy/Actor loss.
@@ -200,7 +233,7 @@ class DIAYN(SAC):
             deterministic=self._use_deterministic_evaluation)
         eval_episodes = EpisodeBatch.from_list(
             self._eval_env.spec,
-            self.update_diversity_rewards(eval_episodes.to_list())
+            self.update_diversity_rewards_in_step_path(eval_episodes.to_list())
         )
         return eval_episodes
 
@@ -224,10 +257,10 @@ class DIAYN(SAC):
                                       eval_episodes,
                                       discount=self._discount)
 
-        if epoch % self.collect_skill_freq == 0:
-            with open(trainer._snapshotter.snapshot_dir +
-                      '/eps_{}'.format(epoch), 'wb') as f:
-                pickle.dump(eval_episodes, f)
+        # if epoch % self.collect_skill_freq == 0:
+        #     with open(trainer._snapshotter.snapshot_dir +
+        #               '/eps_{}'.format(epoch), 'wb') as f:
+        #         pickle.dump(eval_episodes, f)
 
         return last_return
 
@@ -235,6 +268,7 @@ class DIAYN(SAC):
         self._discriminator_optimizer.zero_grad()
         samples = self.replay_buffer.sample_transitions(
             self._buffer_batch_size)
+        del samples['reward']
         samples = dict_np_to_torch(samples)
         observations = samples['observation']
         skills_one_hot = observations[:, :self.number_skills]
@@ -273,8 +307,8 @@ class DIAYN(SAC):
         tabular.record('Discriminator/Loss', float(discriminator_loss))
         tabular.record('ReplayBuffer/buffer_size',
                        self.replay_buffer.n_transitions_stored)
-        tabular.record('Average/TrainAverageReturn',
-                       np.mean(self.episode_rewards))
+        # tabular.record('Average/TrainAverageReturn',
+        #                np.mean(self.episode_rewards))
 
     def diversity_reward(self, observations, skills):
         log_q = self.discriminator(
@@ -285,7 +319,21 @@ class DIAYN(SAC):
 
         return log_q - log_p
 
-    def update_diversity_rewards(self, step_path):
+    def update_diversity_rewards_in_buffer_samples(self, path):
+        observations = path['observation']
+        states = observations[:, self.number_skills:]
+        skills_one_hot = observations[:, :self.number_skills]
+        skills = np.repeat(np.arange(self.number_skills).reshape(1, -1),
+                           observations.shape[0],
+                           axis=0)[skills_one_hot.astype(bool)]
+
+        with torch.no_grad():
+            rewards = self.diversity_reward(states, skills).cpu().numpy()
+
+        path['reward'] = rewards.reshape((-1, 1))
+        return path
+
+    def update_diversity_rewards_in_step_path(self, step_path):
         lengths = []
         observations = []
         for path in step_path:

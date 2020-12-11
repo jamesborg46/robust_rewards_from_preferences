@@ -1,1 +1,1 @@
-python diversity.py --name testing_logging_alpha_10 --seed 10  --env_id Safexp-PointGoalThree0-v0  --number_skills 20 --number_epochs 200 --alpha 10
+python diversity.py --name fixed_eval_determinism --seed 10  --env_id Safexp-PointGoalThree0-v0  --number_skills 50 --number_epochs 500 --alpha .5 
