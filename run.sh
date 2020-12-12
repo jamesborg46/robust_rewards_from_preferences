@@ -2,9 +2,9 @@ python robust_rewards.py \
     --seed 6 \
     --name PRECOLLECTED_3 \
     --env_id Safexp-PointGoalThree0-v0 \
-    --discount 1. \
+    --discount 0.99 \
     --val_opt_its 200 \
-    --val_opt_lr 1e-4 \
+    --val_opt_lr 1e-3 \
     --reward_opt_its 100 \
     --reward_opt_lr 1e-3 \
     --center_adv \
@@ -13,9 +13,9 @@ python robust_rewards.py \
     --seed 6 \
     --name RAW_3 \
     --env_id Safexp-PointGoalThree0-v0 \
-    --discount 1. \
+    --discount 0.99 \
     --val_opt_its 200 \
-    --val_opt_lr 1e-4 \
+    --val_opt_lr 1e-3 \
     --reward_opt_its 100 \
     --reward_opt_lr 1e-3 \
     --center_adv \
@@ -23,7 +23,7 @@ python robust_rewards.py \
     --seed 6 \
     --name PRECOLLECTED_4 \
     --env_id Safexp-PointGoalThree0-v0 \
-    --discount 1. \
+    --discount 0.99 \
     --val_opt_its 200 \
     --val_opt_lr 1e-4 \
     --reward_opt_its 100 \
@@ -34,7 +34,7 @@ python robust_rewards.py \
     --seed 6 \
     --name RAW_4 \
     --env_id Safexp-PointGoalThree0-v0 \
-    --discount 1. \
+    --discount 0.99 \
     --val_opt_its 200 \
     --val_opt_lr 1e-4 \
     --reward_opt_its 100 \
