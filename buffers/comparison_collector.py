@@ -32,7 +32,8 @@ class ComparisonCollector(abc.ABC):
                  label_scheduler,
                  collect_callable=None,
                  segment_length=1,
-                 precollected_comparisons=[]):
+                 precollected_comparisons=[],
+                 precollected_segments=[]):
 
         # super().__init__(capacity_in_transitions)
         self._capacity = capacity_in_transitions
@@ -44,12 +45,24 @@ class ComparisonCollector(abc.ABC):
             self.collect_callable = collect_callable
 
         self._comparisons = precollected_comparisons
+        self._segments = precollected_segments
         self._paths = collections.deque()
         self.n_transitions_stored = 0
 
     def flush(self):
         self._comparisons = []
+        self._segments = []
+        self._paths = collections.deque()
         self.n_transitions_stored = 0
+
+    @staticmethod
+    def comps_to_segs(comps):
+        segments = []
+        for comp in comps:
+            segments.append(comp['left'])
+            segments.append(comp['right'])
+        return segments
+
 
     @staticmethod
     def _get_path_length(path):
@@ -215,6 +228,7 @@ class ComparisonCollector(abc.ABC):
                    if key != 'model_xml'}
 
         segment['model_xml'] = path['model_xml'][0, 0]
+        self._segments.append(segment)
         return segment
 
     def sample_comparison(self):

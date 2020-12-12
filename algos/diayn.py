@@ -137,7 +137,7 @@ class DIAYN(SAC):
                 # for _ in range(self._discriminator_gradient_steps):
                     # discriminator_loss = self.train_discriminator()
 
-            if trainer.step_itr % 25 == 0:
+            if trainer.step_itr % 100 == 0:
                 last_return = self._evaluate_policy(trainer)
 
             self._log_statistics(policy_loss,
