@@ -30,6 +30,7 @@ import argparse
 import json
 import pickle
 
+DEVICE = 'cuda'
 
 HOME = (
     "/home/mil/james/safety_experiments/"
@@ -78,14 +79,16 @@ def main(ctxt,
 
     reward_predictor = MLPRewardPredictor(
         env_spec=env.spec,
-        hidden_sizes=(16, 16),
+        hidden_sizes=(600, 600),
+        layer_normalization=True,
         hidden_nonlinearity=F.relu,
-    )
+    ).to(DEVICE)
 
     optimizer = OptimizerWrapper(
         (torch.optim.Adam, dict(lr=1e-3)),
         # torch.optim.Adam,
         reward_predictor,
+        minibatch_size=256,
         max_optimization_epochs=1
     )
 
@@ -97,20 +100,30 @@ def main(ctxt,
         left_segs, right_segs, preferences = get_data_from_pairwise(comparison_collector)
     else:
         total_ordering, sorted_idx = get_total_ordering(comparison_collector._segments)
+        segs, ranks = get_totall_ordered_ranked_data(total_ordering, sorted_idx)
+        # segs = (segs - segs.mean(dim=0)) / segs.std(dim=0)
 
     for i in range(epochs):
         if use_total_ordering:
-            left_segs, right_segs, preferences = get_totally_ordered_data(
-                total_ordering,
-                1,
-            )
+            # left_segs, right_segs, preferences = get_totally_ordered_data(
+            #     total_ordering,
+            #     5,
+            # )
+            pass
 
-        for left_segs, right_segs, prefs in optimizer.get_minibatch(
-                left_segs, right_segs, preferences):
-            train_reward_predictor(reward_predictor,
-                                   left_segs,
-                                   right_segs,
-                                   prefs,
+#         for _left_segs, _right_segs, _prefs in optimizer.get_minibatch(
+#                 left_segs, right_segs, preferences):
+#             train_reward_predictor(reward_predictor,
+#                                    _left_segs,
+#                                    _right_segs,
+#                                    _prefs,
+#                                    optimizer,)
+
+
+        for _segs, _ranks in optimizer.get_minibatch(segs, ranks):
+            train_ranked_reward_predictor(reward_predictor,
+                                   _segs,
+                                   _ranks,
                                    optimizer,)
 
         validate_reward_predictor(reward_predictor,
@@ -119,6 +132,35 @@ def main(ctxt,
                                   test_comparison_collector)
         logger.log(tabular)
         logger.dump_all(step=i)
+
+
+def train_ranked_reward_predictor(reward_predictor,
+                           segs,
+                           ranks,
+                           optimizer):
+    r"""Train the reward predictor.
+    Args:
+        left_segs (torch.Tensor): Observation from the environment
+            with shape :math:`(N, O*)`.
+        right_segs (torch.Tensor): Observation from the environment
+            with shape :math:`(N, O*)`.
+        prefs (torch.Tensor): Acquired returns
+            with shape :math:`(N, )`.
+    Returns:
+        torch.Tensor: Calculated mean scalar value of value function loss
+            (float).
+    """
+    optimizer.zero_grad()
+    loss = reward_predictor.propagate_ranking_loss(
+        segs,
+        ranks,
+        # dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
+     )
+    optimizer.step()
+
+    with tabular.prefix('/RewardExperiments'):
+        tabular.record('/Loss', loss)
+    return loss
 
 
 def train_reward_predictor(reward_predictor,
@@ -143,6 +185,7 @@ def train_reward_predictor(reward_predictor,
         left_segs,
         right_segs,
         prefs,
+        device=DEVICE
         # dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
      )
     optimizer.step()
@@ -155,28 +198,42 @@ def validate_reward_predictor(reward_predictor,
                               train_comparison_collector,
                               test_comparison_collector):
 
+    num_train_segments = len(train_comparison_collector._segments)
+
     segs = []
     gt_rewards = []
+    gt_reward_sums = []
     for segment in train_comparison_collector._segments:
-        segs.append(segment['observations'])
-        gt_rewards.append(segment['gt_rewards'])
+        segs.append(segment['observations'][0])
+        gt_rewards.append(segment['gt_rewards'][0])
+        # gt_reward_sums.append(segment['gt_rewards'].sum())
 
     with torch.no_grad():
-        segs = torch.tensor(np.concatenate(segs)).type(torch.float32)
-        pred_rewards = reward_predictor(segs)
-
-    breakpoint()
+        # segs = torch.tensor(np.concatenate(segs)).type(torch.float32).to(DEVICE)
+        segs = torch.tensor(np.stack(segs)).type(torch.float32).to(DEVICE)
+        pred_rewards = reward_predictor(segs).cpu()
 
     segment_correlation = corrcoef(pred_rewards.flatten().numpy(),
                                    np.array(gt_rewards).flatten())
 
-    pred_rewards_sorted_idx = np.argsort(pred_rewards)
+    # pred_seg_reward_sums = pred_rewards.reshape(num_train_segments,
+    #                                             5).sum(dim=1).numpy()
+
+    # pred_rewards_sorted_idx = np.argsort(pred_seg_reward_sums)
+    # gt_reward_sums_sorted_idx = np.argsort(gt_reward_sums)
+    pred_rewards_sorted_idx = np.argsort(pred_rewards.flatten().numpy())
+    gt_reward_sums_sorted_idx = np.argsort(np.array(gt_rewards).flatten())
 
     with tabular.prefix('/RewardExperiments'):
         tabular.record('/SegmentCorrelation', segment_correlation)
-        # tabular.record('/FootruleDistance',
-        #                np.sum(np.abs(segments_sorted_idx -
-        #                              pred_rewards_sorted_idx)))
+        tabular.record('/AvgFootruleDistance',
+                       np.sum(np.abs(pred_rewards_sorted_idx -
+                                     gt_reward_sums_sorted_idx)) /
+                       num_train_segments)
+        tabular.record('/AvgFootruleBaseline',
+                       np.sum(np.abs(np.random.permutation(num_train_segments) -
+                                     gt_reward_sums_sorted_idx)) /
+                       num_train_segments)
 
 
     path_corrs = []
@@ -185,8 +242,8 @@ def validate_reward_predictor(reward_predictor,
     for path in train_comparison_collector._paths:
 
         with torch.no_grad():
-            path_tensor = torch.tensor(path['observations']).type(torch.float32)
-            pred_rewards = reward_predictor(path_tensor)
+            path_tensor = torch.tensor(path['observations']).type(torch.float32).to(DEVICE)
+            pred_rewards = reward_predictor(path_tensor).cpu()
 
         path_corrs.append(corrcoef(pred_rewards.flatten().numpy(),
                                    path['gt_rewards'].flatten()))
@@ -207,15 +264,15 @@ def get_data_from_pairwise(comparison_collector):
 
     left_segs = torch.tensor(
         [comp['left']['observations'] for comp in labeled_comparisons]
-    ).type(torch.float32)
+    ).type(torch.float32).to(DEVICE)
 
     right_segs = torch.tensor(
         [comp['right']['observations'] for comp in labeled_comparisons]
-    ).type(torch.float32)
+    ).type(torch.float32).to(DEVICE)
 
     preferences = torch.tensor(
         [comp['label'] for comp in labeled_comparisons]
-    ).type(torch.long)
+    ).type(torch.long).to(DEVICE)
 
     return left_segs, right_segs, preferences
 
@@ -261,12 +318,17 @@ def get_totally_ordered_data(ordered_segments, epochs=20):
         prefs = torch.tensor(right_idxs > left_idxs).type(torch.long)
         all_prefs.append(prefs)
 
-    all_left_segs = torch.cat(all_left_segs)
-    all_right_segs = torch.cat(all_right_segs)
-    all_prefs = torch.cat(all_prefs)
+    all_left_segs = torch.cat(all_left_segs).to(DEVICE)
+    all_right_segs = torch.cat(all_right_segs).to(DEVICE)
+    all_prefs = torch.cat(all_prefs).to(DEVICE)
 
-    return left_segs, right_segs, prefs
+    return all_left_segs, all_right_segs, all_prefs
 
+
+def get_totall_ordered_ranked_data(ordered_segments, sorted_idx):
+    segs = torch.tensor([seg['observations'][0] for seg in ordered_segments]).type(torch.float32).to(DEVICE)
+    ranks = torch.tensor(sorted_idx).type(torch.float32).to(DEVICE)
+    return segs, ranks
 
 
 def get_total_ordering(segments):

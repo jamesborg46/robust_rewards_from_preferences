@@ -70,14 +70,16 @@ class MLPRewardPredictor(nn.Module):
             output_b_init=output_b_init,
             layer_normalization=layer_normalization)
 
-    def compute_preference_loss(self, left_segs, right_segs, prefs):
+    def compute_preference_loss(self, left_segs, right_segs, prefs, device='cpu'):
         if not left_segs.shape == right_segs.shape:
             raise ValueError('Left and Right segs should have the same shape')
 
         batch_size, segment_length, obs_dim = left_segs.shape
 
         inp = (torch.cat([left_segs, right_segs])
-                    .reshape(2 * batch_size * segment_length, obs_dim))
+                    .reshape(2 * batch_size * segment_length, obs_dim)
+                    .to(device))
+
 
         output = (self.module(inp)
                       .reshape(2*batch_size, segment_length)
@@ -88,7 +90,7 @@ class MLPRewardPredictor(nn.Module):
         loss = nn.functional.cross_entropy(logits, prefs)
         return loss
 
-    def propagate_preference_loss(self, left_segs, right_segs, prefs):
+    def propagate_preference_loss(self, left_segs, right_segs, prefs, device='cpu'):
         r"""Compute mean value of loss.
         Args:
             obs (torch.Tensor): Observation from the environment
@@ -98,7 +100,13 @@ class MLPRewardPredictor(nn.Module):
             torch.Tensor: Calculated negative mean scalar value of
                 objective (float).
         """
-        loss = self.compute_preference_loss(left_segs, right_segs, prefs)
+        loss = self.compute_preference_loss(left_segs, right_segs, prefs, device)
+        loss.backward()
+        return loss
+
+    def propagate_ranking_loss(self, segs, ranks):
+        preds = self.module(segs)
+        loss = nn.functional.mse_loss(preds, ranks.reshape(-1,1))
         loss.backward()
         return loss
 
