@@ -40,7 +40,7 @@ def robust_preferences(ctxt=None,
                        env_id='Safexp-PointGoal0-v0',
                        comparison_collector_type='synthetic',
                        number_epochs=1000,
-                       segment_length=20,
+                       segment_length=5,
                        max_episode_length=1000,
                        final_labels=1000,
                        pre_train_labels=400,
@@ -54,6 +54,7 @@ def robust_preferences(ctxt=None,
                        reward_opt_lr=1e-3,
                        center_adv=True,
                        precollected_trajectories=None,
+                       totally_ordered=False,
                        **kwargs):
 
 
@@ -126,12 +127,21 @@ def robust_preferences(ctxt=None,
                 precollected._paths[i]['observations'][:, -obs_space:]
             )
 
+        if (not hasattr(precollected, '_segments')) or \
+                (len(precollected._segments) / 2) != len(precollected._comparisons):
+            precollected._segments = SyntheticComparisonCollector.comps_to_segs(
+                precollected._comparisons
+            )
+
+        precollected.segment_length = segment_length
         for _ in range(pre_train_labels):
             precollected.sample_comparison()
 
+        precollected_segments = precollected._segments
         precollected_comparisons = precollected._comparisons
     else:
         precollected_comparisons = []
+        precollected_segments = []
 
     if comparison_collector_type == 'synthetic':
         comparison_collector = SyntheticComparisonCollector(
@@ -139,6 +149,7 @@ def robust_preferences(ctxt=None,
             label_scheduler,
             segment_length=segment_length,
             precollected_comparisons=precollected_comparisons,
+            precollected_segments=precollected_segments,
         )
     elif comparison_collector_type == 'human':
         comparison_collector = HumanComparisonCollector(
@@ -147,7 +158,8 @@ def robust_preferences(ctxt=None,
             env=env,
             experiment_name=name,
             segment_length=segment_length,
-            precollected_comparisons=precollected_comparisons
+            precollected_comparisons=precollected_comparisons,
+            precollected_segments=precollected_segments,
         )
 
     test_comparison_collector = SyntheticComparisonCollector(
@@ -168,7 +180,8 @@ def robust_preferences(ctxt=None,
                           val_opt_lr=val_opt_lr,
                           reward_opt_its=reward_opt_its,
                           reward_opt_lr=reward_opt_lr,
-                          center_adv=center_adv
+                          center_adv=center_adv,
+                          totally_ordered=totally_ordered,
                           )
 
     sampler_cls = LocalSampler if (monitor or local) else RaySampler
@@ -276,6 +289,7 @@ if __name__ == '__main__':
     parser.add_argument('--final_labels', type=int, required=False)
     parser.add_argument('--pre_train_labels', type=int, required=False)
     parser.add_argument('--monitor', action='store_true', required=False)
+    parser.add_argument('--totally_ordered', action='store_true', required=False)
     parser.add_argument('--local', action='store_true', required=False)
     parser.add_argument('--use_gt_rewards', action='store_true', required=False)
     parser.add_argument('--discount', type=float, required=False)

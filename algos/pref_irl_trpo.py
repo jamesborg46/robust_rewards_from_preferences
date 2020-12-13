@@ -73,7 +73,8 @@ class PreferenceTRPO(TRPO):
                  val_opt_lr=1e-3,
                  reward_opt_its=20,
                  reward_opt_lr=1e-3,
-                 entropy_method='no_entropy'):
+                 entropy_method='no_entropy',
+                 totally_ordered=True):
 
         if vf_optimizer is None:
             vf_optimizer = OptimizerWrapper(
@@ -102,6 +103,7 @@ class PreferenceTRPO(TRPO):
         self.test_comparison_collector = test_comparison_collector
         self.use_gt_rewards = use_gt_rewards
         self._val_freq = val_freq
+        self._totally_ordered = totally_ordered
 
         self.reward_mean = 0
         self.reward_std = 1
@@ -110,11 +112,12 @@ class PreferenceTRPO(TRPO):
             self._reward_predictor_optimizer = reward_predictor_optimizer
         else:
             self._reward_predictor_optimizer = OptimizerWrapper(
-                (torch.optim.Adam, dict(lr=1e-3)),
+                (torch.optim.Adam, dict(lr=reward_opt_lr)),
                 # torch.optim.Adam,
                 self._reward_predictor,
-                max_optimization_epochs=20
+                max_optimization_epochs=reward_opt_its
             )
+        self.reward_predictor_its = reward_opt_its
 
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
@@ -161,8 +164,9 @@ class PreferenceTRPO(TRPO):
                                                        eps.env_spec,
                                                        trainer.step_path[:1])
 
-                with torch.no_grad():
-                    self._validate(trainer.step_itr)
+                if trainer.step_itr % 5 == 0:
+                    with torch.no_grad():
+                        self._validate(trainer.step_itr)
 
                 trainer.step_itr += 1
 
@@ -250,21 +254,16 @@ class PreferenceTRPO(TRPO):
             path['env_infos']['original_returns'] = filtered_returns[i].numpy()
             path['env_infos']['original_baselines'] = filtered_baselines[i].numpy()
 
-        labeled_comparisons = (
-            self.comparison_collector.labeled_decisive_comparisons
-        )
-
-        left_segs = torch.tensor(
-            [comp['left']['observations'] for comp in labeled_comparisons]
-        ).type(torch.float32)
-
-        right_segs = torch.tensor(
-            [comp['right']['observations'] for comp in labeled_comparisons]
-        ).type(torch.float32)
-
-        preferences = torch.tensor(
-            [comp['label'] for comp in labeled_comparisons]
-        ).type(torch.long)
+        if not self._totally_ordered:
+            left_segs, right_segs, preferences = (
+                self.comparison_collector.get_pairwise_data()
+            )
+        else:
+            left_segs, right_segs, preferences = (
+                self.comparison_collector.get_totally_ordered_data(
+                    epochs=self.reward_predictor_its
+                )
+            )
 
         with torch.no_grad():
             if not self.use_gt_rewards:

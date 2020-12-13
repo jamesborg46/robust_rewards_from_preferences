@@ -9,6 +9,7 @@ import collections
 
 from dowel import logger
 import time
+import torch
 
 from utils.video import write_segment_to_video, upload_to_gcs
 
@@ -230,6 +231,70 @@ class ComparisonCollector(abc.ABC):
         segment['model_xml'] = path['model_xml'][0, 0]
         self._segments.append(segment)
         return segment
+
+    def get_pairwise_data(self):
+        labeled_comparisons = (
+            self.comparison_collector.labeled_decisive_comparisons
+        )
+
+        left_segs = torch.tensor(
+            [comp['left']['observations'] for comp in labeled_comparisons]
+        ).type(torch.float32)
+
+        right_segs = torch.tensor(
+            [comp['right']['observations'] for comp in labeled_comparisons]
+        ).type(torch.float32)
+
+        preferences = torch.tensor(
+            [comp['label'] for comp in labeled_comparisons]
+        ).type(torch.long)
+
+        return left_segs, right_segs, preferences
+
+    def get_total_ordering_on_segments(self):
+        assert (len(self._segments) / 2) == len(self._comparisons), "{} {}".format(len(self._segments), len(self._comparisons))
+
+        segment_total_rewards = []
+        for segment in self._segments:
+            segment_total_rewards.append(segment['gt_rewards'].sum())
+        sorted_idx = np.argsort(segment_total_rewards)
+
+        return np.array(self._segments)[sorted_idx]
+
+    def get_totally_ordered_data(self, epochs=20):
+        ordered_segments = self.get_total_ordering_on_segments()
+        N = len(ordered_segments)
+
+        all_left_segs = []
+        all_right_segs = []
+        all_prefs = []
+        for _ in range(epochs):
+            permuted_idxs = np.random.permutation(N)
+
+            left_idxs = permuted_idxs[:N//2]
+            right_idxs = permuted_idxs[N//2:]
+
+            left_segs = torch.tensor(
+                [seg['observations'] for seg in ordered_segments[left_idxs]]
+            ).type(torch.float32)
+
+            all_left_segs.append(left_segs)
+
+            right_segs = torch.tensor(
+                [seg['observations'] for seg in ordered_segments[right_idxs]]
+            ).type(torch.float32)
+
+            all_right_segs.append(right_segs)
+
+            prefs = torch.tensor(right_idxs > left_idxs).type(torch.long)
+            all_prefs.append(prefs)
+
+        all_left_segs = torch.cat(all_left_segs)
+        all_right_segs = torch.cat(all_right_segs)
+        all_prefs = torch.cat(all_prefs)
+
+        return left_segs, right_segs, prefs
+
 
     def sample_comparison(self):
         left = self.sample_segment()

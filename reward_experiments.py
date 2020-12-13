@@ -43,6 +43,7 @@ def main(ctxt,
          comparisons,
          test_comparisons,
          epochs=1000,
+         use_total_ordering=False,
          ):
 
     with open(os.path.join(HOME, exp, 'config.json'), 'rb') as f:
@@ -92,21 +93,17 @@ def main(ctxt,
 #         env_spec=env.spec,
 #     )
 
-    labeled_comparisons = comparison_collector.labeled_decisive_comparisons
-
-    left_segs = torch.tensor(
-        [comp['left']['observations'] for comp in labeled_comparisons]
-    ).type(torch.float32)
-
-    right_segs = torch.tensor(
-        [comp['right']['observations'] for comp in labeled_comparisons]
-    ).type(torch.float32)
-
-    preferences = torch.tensor(
-        [comp['label'] for comp in labeled_comparisons]
-    ).type(torch.long)
+    if not use_total_ordering:
+        left_segs, right_segs, preferences = get_data_from_pairwise(comparison_collector)
+    else:
+        total_ordering, sorted_idx = get_total_ordering(comparison_collector._segments)
 
     for i in range(epochs):
+        if use_total_ordering:
+            left_segs, right_segs, preferences = get_totally_ordered_data(
+                total_ordering,
+                1,
+            )
 
         for left_segs, right_segs, prefs in optimizer.get_minibatch(
                 left_segs, right_segs, preferences):
@@ -114,9 +111,10 @@ def main(ctxt,
                                    left_segs,
                                    right_segs,
                                    prefs,
-                                   optimizer)
+                                   optimizer,)
 
         validate_reward_predictor(reward_predictor,
+                                  sorted_idx,
                                   comparison_collector,
                                   test_comparison_collector)
         logger.log(tabular)
@@ -153,8 +151,9 @@ def train_reward_predictor(reward_predictor,
 
 
 def validate_reward_predictor(reward_predictor,
+                              segments_sorted_idx,
                               train_comparison_collector,
-                              test_comparison_collector=None):
+                              test_comparison_collector):
 
     segs = []
     gt_rewards = []
@@ -166,13 +165,23 @@ def validate_reward_predictor(reward_predictor,
         segs = torch.tensor(np.concatenate(segs)).type(torch.float32)
         pred_rewards = reward_predictor(segs)
 
+    breakpoint()
+
     segment_correlation = corrcoef(pred_rewards.flatten().numpy(),
                                    np.array(gt_rewards).flatten())
 
+    pred_rewards_sorted_idx = np.argsort(pred_rewards)
+
     with tabular.prefix('/RewardExperiments'):
         tabular.record('/SegmentCorrelation', segment_correlation)
+        # tabular.record('/FootruleDistance',
+        #                np.sum(np.abs(segments_sorted_idx -
+        #                              pred_rewards_sorted_idx)))
+
 
     path_corrs = []
+    std_devs = []
+    means = []
     for path in train_comparison_collector._paths:
 
         with torch.no_grad():
@@ -181,9 +190,91 @@ def validate_reward_predictor(reward_predictor,
 
         path_corrs.append(corrcoef(pred_rewards.flatten().numpy(),
                                    path['gt_rewards'].flatten()))
+        std_devs.append(pred_rewards.flatten().std().item())
+        means.append(pred_rewards.flatten().mean().item())
 
     with tabular.prefix('/RewardExperiments'):
         tabular.record('/AvgPathhCorrelation', np.mean(path_corrs))
+
+    with tabular.prefix('/RewardExperiments'):
+        tabular.record('/AvgStdRewPath', np.mean(std_devs))
+
+    with tabular.prefix('/RewardExperiments'):
+        tabular.record('/MeanRewPath', np.mean(means))
+
+def get_data_from_pairwise(comparison_collector):
+    labeled_comparisons = comparison_collector.labeled_decisive_comparisons
+
+    left_segs = torch.tensor(
+        [comp['left']['observations'] for comp in labeled_comparisons]
+    ).type(torch.float32)
+
+    right_segs = torch.tensor(
+        [comp['right']['observations'] for comp in labeled_comparisons]
+    ).type(torch.float32)
+
+    preferences = torch.tensor(
+        [comp['label'] for comp in labeled_comparisons]
+    ).type(torch.long)
+
+    return left_segs, right_segs, preferences
+
+
+# def get_totally_ordered_data(segments, epochs=20):
+#     N = len(segments)
+#     permuted_idxs = np.random.permutation(N)
+#     left_idxs = permuted_idxs[:N//2]
+#     right_idxs = permuted_idxs[N//2:]
+#     left_segs = torch.tensor(
+#         [seg['observations'] for seg in segments[left_idxs]]
+#     ).type(torch.float32)
+#     right_segs = torch.tensor(
+#         [seg['observations'] for seg in segments[right_idxs]]
+#     ).type(torch.float32)
+#     prefs = torch.tensor(right_idxs > left_idxs).type(torch.long)
+#     return left_segs, right_segs, prefs
+
+def get_totally_ordered_data(ordered_segments, epochs=20):
+    N = len(ordered_segments)
+
+    all_left_segs = []
+    all_right_segs = []
+    all_prefs = []
+    for _ in range(epochs):
+        permuted_idxs = np.random.permutation(N)
+
+        left_idxs = permuted_idxs[:N//2]
+        right_idxs = permuted_idxs[N//2:]
+
+        left_segs = torch.tensor(
+            [seg['observations'] for seg in ordered_segments[left_idxs]]
+        ).type(torch.float32)
+
+        all_left_segs.append(left_segs)
+
+        right_segs = torch.tensor(
+            [seg['observations'] for seg in ordered_segments[right_idxs]]
+        ).type(torch.float32)
+
+        all_right_segs.append(right_segs)
+
+        prefs = torch.tensor(right_idxs > left_idxs).type(torch.long)
+        all_prefs.append(prefs)
+
+    all_left_segs = torch.cat(all_left_segs)
+    all_right_segs = torch.cat(all_right_segs)
+    all_prefs = torch.cat(all_prefs)
+
+    return left_segs, right_segs, prefs
+
+
+
+def get_total_ordering(segments):
+    segment_total_rewards = []
+    for segment in segments:
+        segment_total_rewards.append(segment['gt_rewards'].sum())
+    sorted_idx = np.argsort(segment_total_rewards)
+    return np.array(segments)[sorted_idx], sorted_idx
 
 
 def corrcoef(dist_a, dist_b):
@@ -204,6 +295,7 @@ if __name__ == '__main__':
     parser.add_argument('--comparisons', type=str, required=True)
     parser.add_argument('--test_comparisons', type=str, required=True)
     parser.add_argument('--epochs', type=int, required=False)
+    parser.add_argument('--use_total_ordering', action='store_true', default=False)
 
     args = parser.parse_args()
 
@@ -217,5 +309,6 @@ if __name__ == '__main__':
         test_exp=args.test_exp,
         comparisons=args.comparisons,
         test_comparisons=args.test_comparisons,
-        epochs=args.epochs
+        epochs=args.epochs,
+        use_total_ordering=args.use_total_ordering,
     )
