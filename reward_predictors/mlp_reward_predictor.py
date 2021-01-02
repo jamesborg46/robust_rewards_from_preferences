@@ -86,9 +86,11 @@ class MLPRewardPredictor(nn.Module):
                       .sum(dim=1))
 
         logits = output.reshape(2, batch_size).transpose(0, 1)
+        preds = torch.argmax(logits, dim=1)
+        accuracy = torch.sum(preds.flatten() == prefs.flatten()) / batch_size
 
         loss = nn.functional.cross_entropy(logits, prefs)
-        return loss
+        return loss, accuracy
 
     def propagate_preference_loss(self, left_segs, right_segs, prefs, device='cpu'):
         r"""Compute mean value of loss.
@@ -100,9 +102,9 @@ class MLPRewardPredictor(nn.Module):
             torch.Tensor: Calculated negative mean scalar value of
                 objective (float).
         """
-        loss = self.compute_preference_loss(left_segs, right_segs, prefs, device)
+        loss, accuracy = self.compute_preference_loss(left_segs, right_segs, prefs, device)
         loss.backward()
-        return loss
+        return loss, accuracy
 
     def propagate_ranking_loss(self, segs, ranks):
         preds = self.module(segs)

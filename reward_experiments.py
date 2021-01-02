@@ -79,13 +79,13 @@ def main(ctxt,
 
     reward_predictor = MLPRewardPredictor(
         env_spec=env.spec,
-        hidden_sizes=(600, 600),
+        hidden_sizes=(126, 126),
         layer_normalization=True,
         hidden_nonlinearity=F.relu,
     ).to(DEVICE)
 
     optimizer = OptimizerWrapper(
-        (torch.optim.Adam, dict(lr=1e-3)),
+        (torch.optim.Adam, dict(lr=1e-3, weight_decay=1e-2)),
         # torch.optim.Adam,
         reward_predictor,
         minibatch_size=256,
@@ -100,36 +100,65 @@ def main(ctxt,
         left_segs, right_segs, preferences = get_data_from_pairwise(comparison_collector)
     else:
         total_ordering, sorted_idx = get_total_ordering(comparison_collector._segments)
-        segs, ranks = get_totall_ordered_ranked_data(total_ordering, sorted_idx)
+        # segs, ranks = get_totall_ordered_ranked_data(total_ordering, sorted_idx)
         # segs = (segs - segs.mean(dim=0)) / segs.std(dim=0)
 
     for i in range(epochs):
         if use_total_ordering:
-            # left_segs, right_segs, preferences = get_totally_ordered_data(
-            #     total_ordering,
-            #     5,
-            # )
-            pass
+            left_segs, right_segs, preferences = get_totally_ordered_data(
+                total_ordering,
+                5,
+            )
+            # pass
 
-#         for _left_segs, _right_segs, _prefs in optimizer.get_minibatch(
-#                 left_segs, right_segs, preferences):
-#             train_reward_predictor(reward_predictor,
-#                                    _left_segs,
-#                                    _right_segs,
-#                                    _prefs,
-#                                    optimizer,)
-
-
-        for _segs, _ranks in optimizer.get_minibatch(segs, ranks):
-            train_ranked_reward_predictor(reward_predictor,
-                                   _segs,
-                                   _ranks,
+        accuracies = []
+        for _left_segs, _right_segs, _prefs in optimizer.get_minibatch(
+                left_segs, right_segs, preferences):
+            loss, accuracy = train_reward_predictor(reward_predictor,
+                                   _left_segs,
+                                   _right_segs,
+                                   _prefs,
                                    optimizer,)
+            accuracies.append(accuracy.cpu().item())
+
+        with tabular.prefix('/RewardExperiments'):
+            tabular.record('/TrainAccuracy', np.mean(accuracies))
+
+#         for _segs, _ranks in optimizer.get_minibatch(segs, ranks):
+#             train_ranked_reward_predictor(reward_predictor,
+#                                    _segs,
+#                                    _ranks,
+#                                    optimizer,)
 
         validate_reward_predictor(reward_predictor,
                                   sorted_idx,
                                   comparison_collector,
-                                  test_comparison_collector)
+                                  test_comparison_collector,
+                                  left_segs,
+                                  right_segs,
+                                  preferences)
+
+        left_segs, right_segs, preferences = get_totally_ordered_data(
+            total_ordering,
+            5,
+        )
+
+        test_accuracies = []
+        with torch.no_grad():
+            for _left_segs, _right_segs, _prefs in optimizer.get_minibatch(
+                    left_segs, right_segs, preferences):
+                loss, accuracy = reward_predictor.compute_preference_loss(
+                        _left_segs,
+                        _right_segs,
+                        _prefs,
+                        device=DEVICE
+                        # dataset_size=len(self.comparison_collector.labeled_decisive_comparisons)
+                     )
+                test_accuracies.append(accuracy.cpu().item())
+
+        with tabular.prefix('/RewardExperiments'):
+            tabular.record('/TestAccuracy', np.mean(test_accuracies))
+
         logger.log(tabular)
         logger.dump_all(step=i)
 
@@ -181,7 +210,7 @@ def train_reward_predictor(reward_predictor,
             (float).
     """
     optimizer.zero_grad()
-    loss = reward_predictor.propagate_preference_loss(
+    loss, accuracy = reward_predictor.propagate_preference_loss(
         left_segs,
         right_segs,
         prefs,
@@ -190,13 +219,16 @@ def train_reward_predictor(reward_predictor,
      )
     optimizer.step()
 
-    return loss
+    return loss, accuracy
 
 
 def validate_reward_predictor(reward_predictor,
                               segments_sorted_idx,
                               train_comparison_collector,
-                              test_comparison_collector):
+                              test_comparison_collector,
+                              left_segs,
+                              right_segs,
+                              preferences):
 
     num_train_segments = len(train_comparison_collector._segments)
 
@@ -258,7 +290,6 @@ def validate_reward_predictor(reward_predictor,
 
     with tabular.prefix('/RewardExperiments'):
         tabular.record('/MeanRewPath', np.mean(means))
-
 def get_data_from_pairwise(comparison_collector):
     labeled_comparisons = comparison_collector.labeled_decisive_comparisons
 
