@@ -3,4 +3,3 @@ MAINTAINER James Borg <jamesborg46@gmail.com>
 
 RUN apt-get update && \
     apt-get install -y git-core
-RUN git clone https://github.com/Indoril007/robust_rewards_from_preferences.git
