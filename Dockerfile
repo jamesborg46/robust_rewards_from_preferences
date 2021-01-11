@@ -3,6 +3,6 @@ MAINTAINER James Borg <jamesborg46@gmail.com>
 
 RUN apt-get update && \
     apt-get install -y git-core && \
-    apt-get install libosmesa6-dev libgl1-mesa-glx libglfw3
+    apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3
 
 ENV LD_LIBRARY_PATH=$HOME/.mujoco/mujoco200/bin:$LD_LIBRARY_PATH
