@@ -86,8 +86,8 @@ RUN conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
 RUN pip install Django==1.8
 RUN pip install dowel==0.0.3
 RUN pip install git+https://github.com/Indoril007/garage.git@james
-RUN pip install git+https://github.com/Indoril007/safety-gym.git@james#egg=safety_gym
 
+RUN apt-get install -y unzip
 # MUJOCO
 RUN mkdir -p /root/.mujoco \
     && wget https://www.roboti.us/download/mujoco200_linux.zip -O mujoco.zip \
@@ -98,4 +98,5 @@ RUN mkdir -p /root/.mujoco \
 ENV LD_LIBRARY_PATH /root/.mujoco/mujoco200/bin:${LD_LIBRARY_PATH}
 ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 
-RUN pip install mujoco_py==2.0.2.7
+# RUN pip install git+https://github.com/Indoril007/safety-gym.git@james#egg=safety_gym
+# RUN pip install mujoco_py==2.0.2.7
