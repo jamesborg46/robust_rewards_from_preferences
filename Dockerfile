@@ -57,3 +57,6 @@ RUN apt-get update && \
 RUN ln -s /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGL.so
 
 ENV LD_LIBRARY_PATH=$HOME/.mujoco/mujoco200/bin:$LD_LIBRARY_PATH
+
+RUN conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
+
