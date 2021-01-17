@@ -51,12 +51,51 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-mark hold libcudnn8 && \
     rm -rf /var/lib/apt/lists/*
 
+ENV NCCL_VERSION 2.8.3
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cuda-nvml-dev-$CUDA_PKG_VERSION \
+    cuda-command-line-tools-$CUDA_PKG_VERSION \
+    cuda-nvprof-$CUDA_PKG_VERSION \
+    cuda-npp-dev-$CUDA_PKG_VERSION \
+    cuda-libraries-dev-$CUDA_PKG_VERSION \
+    cuda-minimal-build-$CUDA_PKG_VERSION \
+    libcublas-dev=10.2.2.89-1 \
+    libnccl-dev=2.8.3-1+cuda10.2 \
+    && apt-mark hold libnccl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV LIBRARY_PATH /usr/local/cuda/lib64/stubs
+
+ENV CUDNN_VERSION 8.0.5.39
+
+LABEL com.nvidia.cudnn.version="${CUDNN_VERSION}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcudnn8=$CUDNN_VERSION-1+cuda10.2 \
+    libcudnn8-dev=$CUDNN_VERSION-1+cuda10.2 \
+    && apt-mark hold libcudnn8 && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN apt-get update && \
     apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3
 
 RUN ln -s /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGL.so
 
-ENV LD_LIBRARY_PATH=$HOME/.mujoco/mujoco200/bin:$LD_LIBRARY_PATH
-
 RUN conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
+RUN pip install Django==1.8
+RUN pip install dowel==0.0.3
+RUN pip install git+https://github.com/Indoril007/garage.git@james
+RUN pip install git+https://github.com/Indoril007/safety-gym.git@james#egg=safety_gym
 
+# MUJOCO
+RUN mkdir -p /root/.mujoco \
+    && wget https://www.roboti.us/download/mujoco200_linux.zip -O mujoco.zip \
+    && unzip mujoco.zip -d /root/.mujoco \
+    && mv /root/.mujoco/mujoco200_linux /root/.mujoco/mujoco200 \
+    && rm mujoco.zip
+
+ENV LD_LIBRARY_PATH /root/.mujoco/mujoco200/bin:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
+
+RUN pip install mujoco_py==2.0.2.7
