@@ -234,7 +234,7 @@ class ComparisonCollector(abc.ABC):
 
     def get_pairwise_data(self):
         labeled_comparisons = (
-            self.comparison_collector.labeled_decisive_comparisons
+            self.labeled_decisive_comparisons
         )
 
         left_segs = torch.tensor(

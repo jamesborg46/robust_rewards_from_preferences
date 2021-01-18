@@ -267,7 +267,7 @@ class PreferenceTRPO(TRPO):
 
         with torch.no_grad():
             if not self.use_gt_rewards:
-                reward_predictor_loss_before = (
+                reward_predictor_loss_before, _ = (
                     self._reward_predictor.compute_preference_loss(
                         left_segs,
                         right_segs,
@@ -286,7 +286,7 @@ class PreferenceTRPO(TRPO):
 
         with torch.no_grad():
             if not self.use_gt_rewards:
-                reward_predictor_loss_after = (
+                reward_predictor_loss_after, _ = (
                     self._reward_predictor.compute_preference_loss(
                         left_segs,
                         right_segs,
@@ -406,7 +406,7 @@ class PreferenceTRPO(TRPO):
             [comp['label'] for comp in labeled_comparisons]
         ).type(torch.long)
 
-        for _ in range(100):
+        for _ in range(1):
             for dataset in self._reward_predictor_optimizer.get_minibatch(
                     left_segs, right_segs, preferences):
                 self._train_reward_predictor(*dataset)
