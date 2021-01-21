@@ -28,6 +28,7 @@ from reward_predictors import MLPRewardPredictor, BNNRewardPredictor
 import numpy as np
 
 from datetime import datetime
+import time
 import os
 import argparse
 import json
@@ -56,7 +57,6 @@ def robust_preferences(ctxt=None,
                        precollected_trajectories=None,
                        totally_ordered=False,
                        **kwargs):
-
 
     """
     TODO DOCS
@@ -299,6 +299,8 @@ if __name__ == '__main__':
     parser.add_argument('--reward_opt_lr', type=float, required=False)
     parser.add_argument('--center_adv', action='store_true', default=False)
 
+    torch.set_num_threads(4)
+
     args = vars(parser.parse_args())
     args = {k: v for k, v in args.items() if v is not None}
 
@@ -318,10 +320,17 @@ if __name__ == '__main__':
 
     register_envs()
 
+    experiment_dir = os.getenv('EXPERIMENT_LOGS',
+                               default=os.path.join(os.getcwd(), 'experiment'))
+
+    log_dir = os.path.join(experiment_dir,
+                           args['name'] + time.ctime().replace(' ', '_'))
+
     robust_preferences = wrap_experiment(
         robust_preferences,
         name=args['name'],
         snapshot_gap=25,
-        snapshot_mode='gap'
+        snapshot_mode='gap',
+        log_dir=log_dir,
     )
     robust_preferences(**kwargs)

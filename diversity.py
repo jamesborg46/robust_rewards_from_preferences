@@ -26,6 +26,7 @@ from algos import DIAYN
 
 import json
 from datetime import datetime
+import time
 import argparse
 import os
 
@@ -215,6 +216,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_episode_length', type=int, required=False)
     parser.add_argument('--alpha', type=float, required=False)
 
+    torch.set_num_threads(4)
+
     args = vars(parser.parse_args())
     args = {k: v for k, v in args.items() if v is not None}
 
@@ -237,6 +240,20 @@ if __name__ == '__main__':
 
     args['seed'] = (
         args['seed'] if 'seed' in args.keys() else np.random.randint(0, 1000)
+    )
+
+    experiment_dir = os.getenv('EXPERIMENT_LOGS',
+                               default=os.path.join(os.getcwd(), 'experiment'))
+
+    log_dir = os.path.join(experiment_dir,
+                           args['name'] + time.ctime().replace(' ', '_'))
+
+    diversity_is_all_you_need = wrap_experiment(
+        diversity_is_all_you_need,
+        name=args['name'],
+        snapshot_gap=50,
+        snapshot_mode='gapped_snapshot',
+        log_dir=log_dir,
     )
 
     diversity_is_all_you_need(**kwargs)
