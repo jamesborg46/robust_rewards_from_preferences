@@ -31,9 +31,6 @@ import argparse
 import os
 
 
-@wrap_experiment(name_parameters='passed',
-                 snapshot_gap=25,
-                 snapshot_mode='gap')
 def diversity_is_all_you_need(ctxt=None,
                               seed=1,
                               name='EXP',
@@ -120,7 +117,8 @@ def diversity_is_all_you_need(ctxt=None,
     trainer.setup(
         algo=sac,
         env=env,
-        sampler_cls=RaySampler,
+        sampler=LocalSampler,
+        # sampler_cls=RaySampler,
         # worker_class=DefaultWorker
     )
     trainer.train(n_epochs=number_epochs, batch_size=3000)
