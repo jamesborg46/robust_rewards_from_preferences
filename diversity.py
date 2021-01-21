@@ -38,6 +38,7 @@ def diversity_is_all_you_need(ctxt=None,
                               number_epochs=1000,
                               max_episode_length=1000,
                               alpha=0.1,
+                              n_workers=8,
                               env_id='Safexp-PointGoal0-v0',
                               **kwargs,
                               ):
@@ -117,7 +118,8 @@ def diversity_is_all_you_need(ctxt=None,
     trainer.setup(
         algo=sac,
         env=env,
-        sampler=LocalSampler,
+        sampler_cls=LocalSampler,
+        n_workers=n_workers,
         # sampler_cls=RaySampler,
         # worker_class=DefaultWorker
     )
@@ -208,6 +210,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='diversity is all you need')
     parser.add_argument('--name', type=str, required=True)
     parser.add_argument('--env_id', type=str, required=False)
+    parser.add_argument('--n_workers', type=int, default=8)
     parser.add_argument('--number_skills', type=int, required=False)
     parser.add_argument('--number_epochs', type=int, required=False)
     parser.add_argument('--seed', type=int, required=False)
@@ -250,7 +253,7 @@ if __name__ == '__main__':
         diversity_is_all_you_need,
         name=args['name'],
         snapshot_gap=50,
-        snapshot_mode='gapped_snapshot',
+        snapshot_mode='gapped_last',
         log_dir=log_dir,
     )
 

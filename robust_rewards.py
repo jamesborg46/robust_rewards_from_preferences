@@ -56,6 +56,7 @@ def robust_preferences(ctxt=None,
                        center_adv=True,
                        precollected_trajectories=None,
                        totally_ordered=False,
+                       n_workers=8,
                        **kwargs):
 
     """
@@ -189,6 +190,7 @@ def robust_preferences(ctxt=None,
     trainer.setup(algo,
                   env,
                   sampler_cls=sampler_cls,
+                  n_workers=n_workers,
                   )
 
     trainer.train(n_epochs=number_epochs, batch_size=4000)
@@ -298,6 +300,7 @@ if __name__ == '__main__':
     parser.add_argument('--reward_opt_its', type=int, required=False)
     parser.add_argument('--reward_opt_lr', type=float, required=False)
     parser.add_argument('--center_adv', action='store_true', default=False)
+    parser.add_argument('--n_workers', type=int, default=8)
 
     torch.set_num_threads(4)
 
@@ -329,8 +332,8 @@ if __name__ == '__main__':
     robust_preferences = wrap_experiment(
         robust_preferences,
         name=args['name'],
-        snapshot_gap=25,
-        snapshot_mode='gap',
+        snapshot_gap=50,
+        snapshot_mode='gapped_last',
         log_dir=log_dir,
     )
     robust_preferences(**kwargs)

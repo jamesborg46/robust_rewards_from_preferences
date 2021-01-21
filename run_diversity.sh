@@ -1,6 +1,7 @@
 python diversity.py \
     --name TEST_1 \
     --env_id Safexp-PointGoalThree0-v0 \
+    --n_workers 8 \
     --number_skills 50 \
     --number_epochs 1001 \
     --seed 11 \
