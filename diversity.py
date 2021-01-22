@@ -68,14 +68,16 @@ def diversity_is_all_you_need(ctxt=None,
     skill_discriminator = MLPModule(
         input_dim=env.original_obs_space.shape[0],
         output_dim=number_skills,
-        hidden_sizes=(256, 256),
+        hidden_sizes=(1200, 1200),
+        # hidden_sizes=(256, 256),
         hidden_nonlinearity=nn.ReLU,
         output_nonlinearity=nn.LogSoftmax,
     )
 
     policy = TanhGaussianMLPPolicy(
         env_spec=env.spec,
-        hidden_sizes=[256, 256],
+        hidden_sizes=[1200, 1200],
+        # hidden_sizes=[256, 256],
         hidden_nonlinearity=nn.ReLU,
         output_nonlinearity=None,
         min_std=np.exp(-20.),
@@ -83,11 +85,13 @@ def diversity_is_all_you_need(ctxt=None,
     )
 
     qf1 = ContinuousMLPQFunction(env_spec=env.spec,
-                                 hidden_sizes=[256, 256],
+                                 hidden_sizes=[1200, 1200],
+                                 # hidden_sizes=[256, 256],
                                  hidden_nonlinearity=F.relu)
 
     qf2 = ContinuousMLPQFunction(env_spec=env.spec,
-                                 hidden_sizes=[256, 256],
+                                 hidden_sizes=[1200, 1200],
+                                 # hidden_sizes=[256, 256],
                                  hidden_nonlinearity=F.relu)
 
     replay_buffer = PathBuffer(capacity_in_transitions=int(1e6))
@@ -117,7 +121,7 @@ def diversity_is_all_you_need(ctxt=None,
         set_gpu_mode(True)
     else:
         set_gpu_mode(False)
-    sac.to()
+
     sampler = RaySampler if ray else LocalSampler
 
     trainer.setup(
@@ -127,6 +131,9 @@ def diversity_is_all_you_need(ctxt=None,
         n_workers=n_workers,
         # worker_class=DefaultWorker
     )
+
+    sac.to()
+
     trainer.train(n_epochs=number_epochs, batch_size=batch_size)
 
 

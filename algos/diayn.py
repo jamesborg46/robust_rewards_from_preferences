@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from dowel import tabular
+from collections import OrderedDict
 
 from garage import StepType
 from garage.torch.algos import SAC
@@ -20,6 +21,13 @@ def get_skill_ints(observations, number_of_skills):
         (observations.shape[0], 1)
     )[skill_one_hot.astype(bool)].flatten()
     return skills
+
+
+def agent_update(policy, device='cpu'):
+    state_dict = OrderedDict(
+        [(k, v.to(device)) for k, v in policy.state_dict().items()]
+    )
+    return state_dict
 
 
 class DIAYN(SAC):
@@ -112,7 +120,10 @@ class DIAYN(SAC):
                 else:
                     batch_size = None
                 trainer.step_path = trainer.obtain_samples(
-                    trainer.step_itr, batch_size)
+                    trainer.step_itr,
+                    batch_size,
+                    agent_update=agent_update(self.policy)
+                )
                 # trainer.step_path = self.update_diversity_rewards(
                 #     trainer.step_path)
                 # path_returns = []
