@@ -7,4 +7,3 @@ MUJOCO_LOG.TXT
 *.png
 .mypy_cache/
 media/
-notebooks/
