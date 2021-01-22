@@ -30,6 +30,8 @@ import time
 import argparse
 import os
 
+import pickle
+
 
 def diversity_is_all_you_need(ctxt=None,
                               seed=1,
@@ -63,21 +65,22 @@ def diversity_is_all_you_need(ctxt=None,
     env = SafetyEnvStateAppender(env)
     env = GymEnv(env, max_episode_length=max_episode_length)
 
+    with open(os.path.join(ctxt.snapshot_dir, 'env.pkl'), 'wb') as outfile:
+        pickle.dump(env, outfile)
+
     trainer = Trainer(ctxt)
 
     skill_discriminator = MLPModule(
         input_dim=env.original_obs_space.shape[0],
         output_dim=number_skills,
-        hidden_sizes=(1200, 1200),
-        # hidden_sizes=(256, 256),
+        hidden_sizes=(256, 256),
         hidden_nonlinearity=nn.ReLU,
         output_nonlinearity=nn.LogSoftmax,
     )
 
     policy = TanhGaussianMLPPolicy(
         env_spec=env.spec,
-        hidden_sizes=[1200, 1200],
-        # hidden_sizes=[256, 256],
+        hidden_sizes=[256, 256],
         hidden_nonlinearity=nn.ReLU,
         output_nonlinearity=None,
         min_std=np.exp(-20.),
@@ -85,13 +88,11 @@ def diversity_is_all_you_need(ctxt=None,
     )
 
     qf1 = ContinuousMLPQFunction(env_spec=env.spec,
-                                 hidden_sizes=[1200, 1200],
-                                 # hidden_sizes=[256, 256],
+                                 hidden_sizes=[256, 256],
                                  hidden_nonlinearity=F.relu)
 
     qf2 = ContinuousMLPQFunction(env_spec=env.spec,
-                                 hidden_sizes=[1200, 1200],
-                                 # hidden_sizes=[256, 256],
+                                 hidden_sizes=[256, 256],
                                  hidden_nonlinearity=F.relu)
 
     replay_buffer = PathBuffer(capacity_in_transitions=int(1e6))
@@ -246,7 +247,7 @@ if __name__ == '__main__':
     }
 
     args['name'] = (
-        args['name'] + '_' + datetime.now().strftime("%m%d%Y_%H%M%S")
+        args['name'] + '_' + time.ctime().replace(' ', '_')
     )
 
     kwargs = {**args, **config}
@@ -261,7 +262,7 @@ if __name__ == '__main__':
                                default=os.path.join(os.getcwd(), 'experiment'))
 
     log_dir = os.path.join(experiment_dir,
-                           args['name'] + time.ctime().replace(' ', '_'))
+                           args['name'])
 
     diversity_is_all_you_need = wrap_experiment(
         diversity_is_all_you_need,

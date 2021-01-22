@@ -268,10 +268,10 @@ class DIAYN(SAC):
                                       eval_episodes,
                                       discount=self._discount)
 
-        # if epoch % self.collect_skill_freq == 0:
-        #     with open(trainer._snapshotter.snapshot_dir +
-        #               '/eps_{}'.format(epoch), 'wb') as f:
-        #         pickle.dump(eval_episodes, f)
+        if epoch % self.collect_skill_freq == 0:
+            with open(trainer._snapshotter.snapshot_dir +
+                      '/eps_{}'.format(epoch), 'wb') as f:
+                pickle.dump(eval_episodes, f)
 
         return last_return
 
