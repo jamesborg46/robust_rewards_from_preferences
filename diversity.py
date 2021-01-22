@@ -41,7 +41,8 @@ def diversity_is_all_you_need(ctxt=None,
                               n_workers=8,
                               env_id='Safexp-PointGoal0-v0',
                               batch_size=4000,
-                              ray=True,
+                              ray=False,
+                              use_gpu=False,
                               **kwargs,
                               ):
 
@@ -112,7 +113,7 @@ def diversity_is_all_you_need(ctxt=None,
                 steps_per_epoch=1,
                 use_deterministic_evaluation=False)
 
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and use_gpu:
         set_gpu_mode(True)
     else:
         set_gpu_mode(False)
@@ -221,6 +222,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_episode_length', type=int, required=False)
     parser.add_argument('--alpha', type=float, required=False)
     parser.add_argument('--ray', action='store_true', required=False)
+    parser.add_argument('--use_gpu', action='store_true', required=False)
 
     torch.set_num_threads(4)
 

@@ -275,7 +275,7 @@ class DIAYN(SAC):
         skills = (torch.arange(self.number_skills)
                        .reshape(1, -1)
                        .repeat(observations.shape[0], 1)
-                  )[skills_one_hot.type(torch.bool)]
+                  )[skills_one_hot.type(torch.bool)].to(global_device())
 
         states = samples['observation'][:, self.number_skills:]
 
@@ -348,7 +348,7 @@ class DIAYN(SAC):
                            axis=0)[skills_one_hot.astype(bool)]
 
         with torch.no_grad():
-            rewards = self.diversity_reward(states, skills).numpy()
+            rewards = self.diversity_reward(states, skills).cpu().numpy()
 
         start = 0
         for length, path in zip(lengths, step_path):
