@@ -40,6 +40,8 @@ def diversity_is_all_you_need(ctxt=None,
                               alpha=0.1,
                               n_workers=8,
                               env_id='Safexp-PointGoal0-v0',
+                              batch_size=4000,
+                              ray=True,
                               **kwargs,
                               ):
 
@@ -115,15 +117,16 @@ def diversity_is_all_you_need(ctxt=None,
     else:
         set_gpu_mode(False)
     sac.to()
+    sampler = RaySampler if ray else LocalSampler
+
     trainer.setup(
         algo=sac,
         env=env,
-        sampler_cls=LocalSampler,
+        sampler_cls=sampler,
         n_workers=n_workers,
-        # sampler_cls=RaySampler,
         # worker_class=DefaultWorker
     )
-    trainer.train(n_epochs=number_epochs, batch_size=3000)
+    trainer.train(n_epochs=number_epochs, batch_size=batch_size)
 
 
 def register_envs():
@@ -213,9 +216,11 @@ if __name__ == '__main__':
     parser.add_argument('--n_workers', type=int, default=8)
     parser.add_argument('--number_skills', type=int, required=False)
     parser.add_argument('--number_epochs', type=int, required=False)
+    parser.add_argument('--batch_size', type=int, default=4000)
     parser.add_argument('--seed', type=int, required=False)
     parser.add_argument('--max_episode_length', type=int, required=False)
     parser.add_argument('--alpha', type=float, required=False)
+    parser.add_argument('--ray', action='store_true', required=False)
 
     torch.set_num_threads(4)
 

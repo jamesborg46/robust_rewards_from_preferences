@@ -137,7 +137,7 @@ class DIAYN(SAC):
                 # for _ in range(self._discriminator_gradient_steps):
                     # discriminator_loss = self.train_discriminator()
 
-            if trainer.step_itr % 100 == 0:
+            if trainer.step_itr % 50 == 0:
                 last_return = self._evaluate_policy(trainer)
 
             self._log_statistics(policy_loss,
@@ -356,3 +356,17 @@ class DIAYN(SAC):
             start += length
 
         return step_path
+
+    @property
+    def networks(self):
+        """Return all the networks within the model.
+
+        Returns:
+            list: A list of networks.
+
+        """
+        return [
+            self.policy, self._qf1, self._qf2, self._target_qf1,
+            self._target_qf2, self.discriminator
+        ]
+
