@@ -58,7 +58,8 @@ class DiversityWrapper(gym.Wrapper):
         self.skill_mode = skill_mode
 
     def set_skill(self, skill):
-        self.skill = skill
+        if skill is not None:
+            self.skill = skill
 
     def reset(self):
         if self.skill_mode not in ['random', 'consecutive', 'constant']:

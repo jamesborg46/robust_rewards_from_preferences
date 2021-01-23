@@ -36,16 +36,19 @@ class EnvConfigUpdate(EnvUpdate):
     def __init__(self,
                  capture_state=False,
                  capture_render=False,
-                 skill_mode='random'):
+                 skill_mode='random',
+                 skill=None):
 
         self.capture_state = capture_state
         self.capture_render = capture_render
         self.skill_mode = skill_mode
+        self.skill = skill
 
     def __call__(self, old_env):
         old_env.set_capture_state(self.capture_state)
         old_env.set_capture_render(self.capture_render)
         old_env.set_skill_mode(self.skill_mode)
+        old_env.set_skill(self.skill)
         return old_env
 
 
@@ -254,18 +257,42 @@ class DIAYN(SAC):
 
         return policy_objective
 
-    def get_eval_episodes(self, num_eval_episodes):
-        eval_episodes = obtain_evaluation_episodes(
-            self.policy,
-            self._eval_env,
-            self._max_episode_length_eval,
-            num_eps=num_eval_episodes,
-            deterministic=self._use_deterministic_evaluation)
-        eval_episodes = EpisodeBatch.from_list(
-            self._eval_env.spec,
-            self.update_diversity_rewards_in_step_path(eval_episodes.to_list())
+    # def get_eval_episodes(self, num_eval_episodes):
+    #     eval_episodes = obtain_evaluation_episodes(
+    #         self.policy,
+    #         self._eval_env,
+    #         self._max_episode_length_eval,
+    #         num_eps=num_eval_episodes,
+    #         deterministic=self._use_deterministic_evaluation)
+    #     eval_episodes = EpisodeBatch.from_list(
+    #         self._eval_env.spec,
+    #         self.update_diversity_rewards_in_step_path(eval_episodes.to_list())
+    #     )
+    #     return eval_episodes
+
+    def get_eval_episdoes(self, trainer):
+
+        sampler = trainer._sampler
+        n_workers = trainer._n_workers
+        assert self.number_skills % n_workers == 0
+        skills_per_worker = self.number_skills / n_workers
+        env_updates = []
+        for i in range(n_workers):
+            env_updates.append(EnvConfigUpdate(
+                capture_render=True,
+                skill_mode='consecutive',
+                skill=i*skills_per_worker,
+            ))
+
+        sampler._update_workers(
+            agent_update=agent_update(self.policy),
+            env_update=env_updates
         )
-        return eval_episodes
+
+        episodes = sampler.obtain_exact_episodes(
+            n_eps_per_worker=skills_per_worker,
+            agent_update=agent_update(self.policy)
+        )
 
     def _evaluate_policy(self, trainer):
         """Evaluate the performance of the policy via deterministic sampling.
