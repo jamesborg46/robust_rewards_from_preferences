@@ -276,6 +276,7 @@ class DIAYN(SAC):
         n_workers = trainer._eval_n_workers
         assert self.number_skills % n_workers == 0
         skills_per_worker = self.number_skills / n_workers
+
         env_updates = []
         for i in range(n_workers):
             env_updates.append(EnvConfigUpdate(
