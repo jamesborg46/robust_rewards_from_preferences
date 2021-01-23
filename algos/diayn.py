@@ -8,6 +8,7 @@ from garage.torch.algos import SAC
 from garage.torch import dict_np_to_torch, global_device
 from garage import log_performance, obtain_evaluation_episodes
 from garage import EpisodeBatch
+from garage.sampler.env_update import EnvUpdate
 
 import torch.nn.functional as F
 
@@ -28,6 +29,24 @@ def agent_update(policy, device='cpu'):
         [(k, v.to(device)) for k, v in policy.state_dict().items()]
     )
     return state_dict
+
+
+class EnvConfigUpdate(EnvUpdate):
+
+    def __init__(self,
+                 capture_state=False,
+                 capture_render=False,
+                 skill_mode='random'):
+
+        self.capture_state = capture_state
+        self.capture_render = capture_render
+        self.skill_mode = skill_mode
+
+    def __call__(self, old_env):
+        old_env.set_capture_state(self.capture_state)
+        old_env.set_capture_render(self.capture_render)
+        old_env.set_skill_mode(self.skill_mode)
+        return old_env
 
 
 class DIAYN(SAC):
@@ -122,7 +141,8 @@ class DIAYN(SAC):
                 trainer.step_path = trainer.obtain_samples(
                     trainer.step_itr,
                     batch_size,
-                    agent_update=agent_update(self.policy)
+                    agent_update=agent_update(self.policy),
+                    # env_update=EnvConfigUpdate(),
                 )
                 # trainer.step_path = self.update_diversity_rewards(
                 #     trainer.step_path)
