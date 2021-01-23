@@ -1,8 +1,9 @@
 data/
 monitoring/
 __pycache__/
-*.ipynb
 MUJOCO_LOG.TXT
+notebooks/.ipynb_checkpoints/
+notebooks/experiments
 *.mp4
 *.png
 .mypy_cache/
