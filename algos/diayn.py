@@ -272,8 +272,8 @@ class DIAYN(SAC):
 
     def get_eval_episodes(self, trainer):
 
-        sampler = trainer._sampler
-        n_workers = trainer._n_workers
+        sampler = trainer._eval_sampler
+        n_workers = trainer._eval_n_workers
         assert self.number_skills % n_workers == 0
         skills_per_worker = self.number_skills / n_workers
         env_updates = []
@@ -294,7 +294,13 @@ class DIAYN(SAC):
             agent_update=agent_update(self.policy)
         )
 
+        episodes = EpisodeBatch.from_list(
+            trainer._env.spec,
+            self.update_diversity_rewards_in_step_path(episodes.to_list())
+        )
+
         breakpoint()
+        return episodes
 
     def _evaluate_policy(self, trainer):
         """Evaluate the performance of the policy via deterministic sampling.
@@ -312,6 +318,8 @@ class DIAYN(SAC):
         """
         epoch = trainer.step_itr
         eval_episodes = self.get_eval_episodes(trainer)
+        # eval_episodes = self.get_eval_episodes(self.number_skills)
+        breakpoint()
         last_return = log_performance(epoch,
                                       eval_episodes,
                                       discount=self._discount)

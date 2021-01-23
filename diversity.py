@@ -13,7 +13,7 @@ from garage.experiment.deterministic import set_seed
 from garage import wrap_experiment
 from garage.envs import GymEnv
 from garage.replay_buffer import PathBuffer
-from garage.sampler import LocalSampler, RaySampler
+from garage.sampler import LocalSampler, RaySampler, DefaultWorker
 from garage.torch import set_gpu_mode
 from garage.torch.algos import SAC
 from garage.torch.policies import TanhGaussianMLPPolicy
@@ -131,6 +131,12 @@ def diversity_is_all_you_need(ctxt=None,
         sampler_cls=sampler,
         n_workers=n_workers,
         # worker_class=DefaultWorker
+    )
+
+    trainer.eval_sampler_setup(
+        sampler_cls = sampler,
+        n_workers=n_workers,
+        worker_class=DefaultWorker,
     )
 
     sac.to()
