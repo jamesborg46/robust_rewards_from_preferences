@@ -170,7 +170,7 @@ class DIAYN(SAC):
                 # for _ in range(self._discriminator_gradient_steps):
                     # discriminator_loss = self.train_discriminator()
 
-            if trainer.step_itr % 50 == 0:
+            if trainer.step_itr and trainer.step_itr % 2 == 0:
                 last_return = self._evaluate_policy(trainer)
 
             self._log_statistics(policy_loss,
@@ -270,7 +270,7 @@ class DIAYN(SAC):
     #     )
     #     return eval_episodes
 
-    def get_eval_episdoes(self, trainer):
+    def get_eval_episodes(self, trainer):
 
         sampler = trainer._sampler
         n_workers = trainer._n_workers
@@ -281,7 +281,7 @@ class DIAYN(SAC):
             env_updates.append(EnvConfigUpdate(
                 capture_render=True,
                 skill_mode='consecutive',
-                skill=i*skills_per_worker,
+                skill=int(i*skills_per_worker),
             ))
 
         sampler._update_workers(
@@ -293,6 +293,8 @@ class DIAYN(SAC):
             n_eps_per_worker=skills_per_worker,
             agent_update=agent_update(self.policy)
         )
+
+        breakpoint()
 
     def _evaluate_policy(self, trainer):
         """Evaluate the performance of the policy via deterministic sampling.
@@ -309,7 +311,7 @@ class DIAYN(SAC):
 
         """
         epoch = trainer.step_itr
-        eval_episodes = self.get_eval_episodes(self._num_evaluation_episodes)
+        eval_episodes = self.get_eval_episodes(trainer)
         last_return = log_performance(epoch,
                                       eval_episodes,
                                       discount=self._discount)
