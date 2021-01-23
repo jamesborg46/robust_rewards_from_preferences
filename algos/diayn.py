@@ -13,7 +13,9 @@ from garage.sampler.env_update import EnvUpdate
 import torch.nn.functional as F
 
 import pickle
-
+import os
+import os.path as osp
+from utils.video import export_video
 
 def get_skill_ints(observations, number_of_skills):
     skill_one_hot = observations[:, :number_of_skills]
@@ -270,7 +272,7 @@ class DIAYN(SAC):
     #     )
     #     return eval_episodes
 
-    def get_eval_episodes(self, trainer):
+    def get_eval_episodes(self, trainer, render=True):
 
         sampler = trainer._eval_sampler
         n_workers = trainer._eval_n_workers
@@ -280,7 +282,7 @@ class DIAYN(SAC):
         env_updates = []
         for i in range(n_workers):
             env_updates.append(EnvConfigUpdate(
-                capture_render=True,
+                capture_render=render,
                 skill_mode='consecutive',
                 skill=int(i*skills_per_worker),
             ))
@@ -300,10 +302,9 @@ class DIAYN(SAC):
             self.update_diversity_rewards_in_step_path(episodes.to_list())
         )
 
-        breakpoint()
         return episodes
 
-    def _evaluate_policy(self, trainer):
+    def _evaluate_policy(self, trainer, render=True):
         """Evaluate the performance of the policy via deterministic sampling.
 
             Statistics such as (average) discounted return and success rate are
@@ -318,17 +319,39 @@ class DIAYN(SAC):
 
         """
         epoch = trainer.step_itr
-        eval_episodes = self.get_eval_episodes(trainer)
+        eval_episodes = self.get_eval_episodes(trainer, render)
         # eval_episodes = self.get_eval_episodes(self.number_skills)
-        breakpoint()
         last_return = log_performance(epoch,
                                       eval_episodes,
                                       discount=self._discount)
 
-        if epoch % self.collect_skill_freq == 0:
-            with open(trainer._snapshotter.snapshot_dir +
-                      '/eps_{}'.format(epoch), 'wb') as f:
-                pickle.dump(eval_episodes, f)
+        if render:
+            for ep in eval_episodes.to_list():
+                frames = (
+                    [f[::-1, :] for f in ep["env_infos"]['render']]
+                )
+
+                skill = get_skill_ints(
+                    ep['observations'],
+                    self.number_skills
+                )[0]
+
+                fname = osp.join(
+                    trainer._snapshotter.snapshot_dir,
+                    'videos',
+                    f'epoch_{trainer.step_itr}',
+                    f'skill_{skill}.mp4'
+                )
+
+                if not osp.isdir(osp.dirname(fname)):
+                    os.makedirs(osp.dirname(fname))
+
+                export_video(frames, fname)
+
+        # if epoch % self.collect_skill_freq == 0:
+        #     with open(trainer._snapshotter.snapshot_dir +
+        #               '/eps_{}'.format(epoch), 'wb') as f:
+        #         pickle.dump(eval_episodes, f)
 
         return last_return
 
