@@ -9,13 +9,14 @@ import torch
 
 class DiversityWrapper(gym.Wrapper):
 
-    def __init__(self, env,  number_skills=10):
+    def __init__(self, env,  number_skills=10, skill_mode='random'):
         super().__init__(env)
 
         self.number_skills = number_skills
         self.original_obs_space = env.observation_space
         self.init_new_obs_space()
         self.skill = None
+        self.skill_mode = skill_mode
 
     def init_new_obs_space(self):
         if isinstance(self.env.observation_space, spaces.Box) and \
@@ -49,11 +50,24 @@ class DiversityWrapper(gym.Wrapper):
             raise NotImplementedError(
                 'Only box spaces of one dimension handled in diversity mask')
 
-    def reset(self):
-        if self.skill is None:
-            self.skill = np.random.randint(low=0, high=self.number_skills)
+    def reset(self, skill=None, skill_mode=None):
+
+        if skill_mode not in [None, 'random', 'consecutive']:
+            raise ValueError("skill_mode must be 'random' or 'consecutive'")
+
+        if skill_mode is not None:
+            self.skill_mode = skill_mode
+
+        if skill is not None:
+            self.skill = skill
         else:
-            self.skill = (self.skill + 1) % self.number_skills
+            if self.skill_mode == 'random':
+                self.skill = np.random.randint(low=0, high=self.number_skills)
+            elif self.skill_mode == 'consecutive':
+                self.skill = (self.skill + 1) % self.number_skills
+            else:
+                raise Exception()
+
         self.skill_one_hot = np.zeros(self.number_skills)
         self.skill_one_hot[self.skill] = 1
 
