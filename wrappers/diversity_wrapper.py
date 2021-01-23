@@ -50,23 +50,29 @@ class DiversityWrapper(gym.Wrapper):
             raise NotImplementedError(
                 'Only box spaces of one dimension handled in diversity mask')
 
-    def reset(self, skill=None, skill_mode=None):
+    def set_skill_mode(self, skill_mode):
+        if skill_mode not in ['random', 'consecutive', 'constant']:
+            raise ValueError("skill_mode must be 'random', 'consecutive' or"
+                             "constant")
 
-        if skill_mode not in [None, 'random', 'consecutive']:
-            raise ValueError("skill_mode must be 'random' or 'consecutive'")
+        self.skill_mode = skill_mode
 
-        if skill_mode is not None:
-            self.skill_mode = skill_mode
+    def set_skill(self, skill):
+        self.skill = skill
 
-        if skill is not None:
-            self.skill = skill
+    def reset(self):
+        if self.skill_mode not in ['random', 'consecutive', 'constant']:
+            raise ValueError("skill_mode must be 'random', 'consecutive' or"
+                             "constant")
+
+        if self.skill_mode == 'random':
+            self.skill = np.random.randint(low=0, high=self.number_skills)
+        elif self.skill_mode == 'consecutive':
+            self.skill = (self.skill + 1) % self.number_skills
+        elif self.skill_mode == 'constant':
+            pass
         else:
-            if self.skill_mode == 'random':
-                self.skill = np.random.randint(low=0, high=self.number_skills)
-            elif self.skill_mode == 'consecutive':
-                self.skill = (self.skill + 1) % self.number_skills
-            else:
-                raise Exception()
+            raise Exception()
 
         self.skill_one_hot = np.zeros(self.number_skills)
         self.skill_one_hot[self.skill] = 1

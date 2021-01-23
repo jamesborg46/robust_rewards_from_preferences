@@ -4,6 +4,9 @@ from mujoco_py import MjSim, load_model_from_xml
 
 
 class SafetyEnvStateAppender(gym.Wrapper):
+    def __init__(self, env, ):
+        super().__init__(env)
+
     def reset(self):
         obs = self.env.reset()
         self.model_xml = self.model.get_xml()

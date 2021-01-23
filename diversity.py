@@ -237,6 +237,9 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     args = {k: v for k, v in args.items() if v is not None}
 
+    assert args['number_skills'] % args['n_workers'] == 0, \
+        "number of skills should be set as a multiple of n_workers"
+
     config = {
         'continue_goal': False,
         'reward_includes_cost': True,
