@@ -142,7 +142,6 @@ class DIAYN(SAC):
                     trainer.step_itr,
                     batch_size,
                     agent_update=agent_update(self.policy),
-                    # env_update=EnvConfigUpdate(),
                 )
                 # trainer.step_path = self.update_diversity_rewards(
                 #     trainer.step_path)
