@@ -16,6 +16,7 @@ import pickle
 import os
 import os.path as osp
 from utils.video import export_video
+from collections import defaultdict
 
 def get_skill_ints(observations, number_of_skills):
     skill_one_hot = observations[:, :number_of_skills]
@@ -148,9 +149,7 @@ class DIAYN(SAC):
                     batch_size,
                     agent_update=agent_update(self.policy),
                 )
-                # trainer.step_path = self.update_diversity_rewards(
-                #     trainer.step_path)
-                # path_returns = []
+
                 for path in trainer.step_path:
                     self.replay_buffer.add_path(
                         dict(observation=path['observations'],
@@ -161,19 +160,15 @@ class DIAYN(SAC):
                                  step_type == StepType.TERMINAL
                                  for step_type in path['step_types']
                              ]).reshape(-1, 1)))
-                    # path_returns.append(sum(path['rewards']))
-                # assert len(path_returns) == len(trainer.step_path)
-                # self.episode_rewards.append(np.mean(path_returns))
 
                 for _ in range(self._gradient_steps):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
                     discriminator_loss = self.train_discriminator()
 
-                # for _ in range(self._discriminator_gradient_steps):
-                    # discriminator_loss = self.train_discriminator()
-
             if trainer.step_itr and trainer.step_itr % 2 == 0:
-                last_return = self._evaluate_policy(trainer)
+                self._log_episodes(trainer,
+                                   capture_render=False,
+                                   capture_state=True)
 
             self._log_statistics(policy_loss,
                                  qf1_loss,
@@ -188,8 +183,6 @@ class DIAYN(SAC):
             )
 
             trainer.step_itr += 1
-
-        return np.mean(last_return)
 
     def train_once(self, itr=None, paths=None):
         """Complete 1 training iteration of SAC.
@@ -259,30 +252,21 @@ class DIAYN(SAC):
 
         return policy_objective
 
-    # def get_eval_episodes(self, num_eval_episodes):
-    #     eval_episodes = obtain_evaluation_episodes(
-    #         self.policy,
-    #         self._eval_env,
-    #         self._max_episode_length_eval,
-    #         num_eps=num_eval_episodes,
-    #         deterministic=self._use_deterministic_evaluation)
-    #     eval_episodes = EpisodeBatch.from_list(
-    #         self._eval_env.spec,
-    #         self.update_diversity_rewards_in_step_path(eval_episodes.to_list())
-    #     )
-    #     return eval_episodes
+    def get_eval_episodes(self,
+                          sampler,
+                          n_workers,
+                          episodes_per_skill=1,
+                          capture_render=False,
+                          capture_state=False):
 
-    def get_eval_episodes(self, trainer, render=True):
-
-        sampler = trainer._eval_sampler
-        n_workers = trainer._eval_n_workers
         assert self.number_skills % n_workers == 0
         skills_per_worker = self.number_skills / n_workers
 
         env_updates = []
         for i in range(n_workers):
             env_updates.append(EnvConfigUpdate(
-                capture_render=render,
+                capture_state=capture_state,
+                capture_render=capture_render,
                 skill_mode='consecutive',
                 skill=int(i*skills_per_worker),
             ))
@@ -293,67 +277,69 @@ class DIAYN(SAC):
         )
 
         episodes = sampler.obtain_exact_episodes(
-            n_eps_per_worker=skills_per_worker,
+            n_eps_per_worker=skills_per_worker*episodes_per_skill,
             agent_update=agent_update(self.policy)
-        )
-
-        episodes = EpisodeBatch.from_list(
-            trainer._env.spec,
-            self.update_diversity_rewards_in_step_path(episodes.to_list())
         )
 
         return episodes
 
-    def _evaluate_policy(self, trainer, render=True):
-        """Evaluate the performance of the policy via deterministic sampling.
-
-            Statistics such as (average) discounted return and success rate are
-            recorded.
-
-        Args:
-            epoch (int): The current training epoch.
-
-        Returns:
-            float: The average return across self._num_evaluation_episodes
-                episodes
-
+    def _log_episodes(self,
+                      trainer,
+                      capture_render=False,
+                      capture_state=False):
         """
-        epoch = trainer.step_itr
-        eval_episodes = self.get_eval_episodes(trainer, render)
-        # eval_episodes = self.get_eval_episodes(self.number_skills)
-        last_return = log_performance(epoch,
-                                      eval_episodes,
-                                      discount=self._discount)
+        Retrieves evaluation episodes and can render into videos or log as pkl
+        files
+        """
+        eval_episodes = self.get_eval_episodes(
+            sampler=trainer._eval_sampler,
+            n_workers=trainer._eval_n_workers,
+            episodes_per_skill=2,
+            capture_render=capture_render,
+            capture_state=capture_state)
 
-        if render:
-            for ep in eval_episodes.to_list():
-                frames = (
-                    [f[::-1, :] for f in ep["env_infos"]['render']]
-                )
+        if capture_render:
+            self._render_skills(
+                eval_episodes,
+                osp.join(trainer._snapshotter.snapshot_dir, 'videos'),
+                trainer.step_itr
+            )
 
-                skill = get_skill_ints(
-                    ep['observations'],
-                    self.number_skills
-                )[0]
+        if capture_state:
+            fname = osp.join(trainer._snapshotter.snapshot_dir,
+                             'episode_logs',
+                             f'episode_{trainer.step_itr}.pkl')
 
-                fname = osp.join(
-                    trainer._snapshotter.snapshot_dir,
-                    'videos',
-                    f'epoch_{trainer.step_itr}',
-                    f'skill_{skill}.mp4'
-                )
+            if not osp.isdir(osp.dirname(fname)):
+                os.makedirs(osp.dirname(fname))
 
-                if not osp.isdir(osp.dirname(fname)):
-                    os.makedirs(osp.dirname(fname))
+            with open(fname, 'wb') as f:
+                pickle.dump(eval_episodes, f)
 
-                export_video(frames, fname)
+    def _render_skills(self, episodes, directory, epoch):
+        episodes_per_skill = defaultdict(int)
+        for ep in episodes.to_list():
+            frames = (
+                [f[::-1, :] for f in ep["env_infos"]['render']]
+            )
 
-        # if epoch % self.collect_skill_freq == 0:
-        #     with open(trainer._snapshotter.snapshot_dir +
-        #               '/eps_{}'.format(epoch), 'wb') as f:
-        #         pickle.dump(eval_episodes, f)
+            skill = int(get_skill_ints(
+                ep['observations'],
+                self.number_skills
+            )[0])
 
-        return last_return
+            fname = osp.join(
+                directory,
+                f'epoch_{epoch}',
+                f'skill_{skill:03}_ep_{episodes_per_skill[skill]:02}.mp4'
+            )
+
+            episodes_per_skill[skill] += 1
+
+            if not osp.isdir(osp.dirname(fname)):
+                os.makedirs(osp.dirname(fname))
+
+            export_video(frames, fname)
 
     def train_discriminator(self):
         self._discriminator_optimizer.zero_grad()
