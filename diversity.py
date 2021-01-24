@@ -8,6 +8,7 @@ import safety_gym
 from safety_gym.envs.engine import Engine
 from gym.wrappers import Monitor
 from gym.envs.registration import register
+import envs.custom_safety_envs
 
 from garage.experiment.deterministic import set_seed
 from garage import wrap_experiment
@@ -52,17 +53,17 @@ def diversity_is_all_you_need(ctxt=None,
     env = gym.make(env_id)
     config = env.config
 
-    for k, v in kwargs.items():
-        config[k] = v
+    # for k, v in kwargs.items():
+    #     config[k] = v
 
     with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') as outfile:
         json.dump(config, outfile)
 
-    env = Engine(config)
+    # env = Engine(config)
     env.metadata['render.modes'] = ['rgb_array']
 
     env = DiversityWrapper(env, number_skills=number_skills)
-    env = SafetyEnvStateAppender(env)
+    # env = SafetyEnvStateAppender(env)
     env = GymEnv(env, max_episode_length=max_episode_length)
 
     with open(os.path.join(ctxt.snapshot_dir, 'env.pkl'), 'wb') as outfile:
@@ -144,84 +145,84 @@ def diversity_is_all_you_need(ctxt=None,
     trainer.train(n_epochs=number_epochs, batch_size=batch_size)
 
 
-def register_envs():
+# def register_envs():
 
-    base_config = gym.make('Safexp-PointGoal1-v0').config
-    new_config = {
-        'robot_locations': [(0, -1.5)],
-        'robot_rot': np.pi * (1/2),
-        'goal_locations': [(0, 1.5)],
-        'hazards_num': 3,
-        'vases_num': 0,
-        'observe_vases': False,
-        'hazards_placements': None,
-        'hazards_locations': [(-1.3, 0.9), (1.3, 0.9), (0, 0)],
-        'hazards_size': 0.4,
-    }
+#     base_config = gym.make('Safexp-PointGoal1-v0').config
+#     new_config = {
+#         'robot_locations': [(0, -1.5)],
+#         'robot_rot': np.pi * (1/2),
+#         'goal_locations': [(0, 1.5)],
+#         'hazards_num': 3,
+#         'vases_num': 0,
+#         'observe_vases': False,
+#         'hazards_placements': None,
+#         'hazards_locations': [(-1.3, 0.9), (1.3, 0.9), (0, 0)],
+#         'hazards_size': 0.4,
+#     }
 
-    for k, v in new_config.items():
-        assert k in base_config.keys(), 'BAD CONFIG'
-        base_config[k] = v
+#     for k, v in new_config.items():
+#         assert k in base_config.keys(), 'BAD CONFIG'
+#         base_config[k] = v
 
-    register(id='Safexp-PointGoalCustom0-v0',
-             entry_point='safety_gym.envs.mujoco:Engine',
-             kwargs={'config': base_config})
+#     register(id='Safexp-PointGoalCustom0-v0',
+#              entry_point='safety_gym.envs.mujoco:Engine',
+#              kwargs={'config': base_config})
 
-    base_config = gym.make('Safexp-PointGoal1-v0').config
-    new_config = {
-            'robot_locations': [(0, -1.5)],
-            'robot_rot': np.pi * (1/2),
-            'goal_locations': [(0, 1.5)],
-            'hazards_num': 1,
-            'vases_num': 1,
-            'pillars_num': 1,
-            'observe_vases': True,
-            'observe_pillars': True,
-            'constrain_vases': True,
-            'constrain_pillars': True,
-            'hazards_placements': None,
-            'hazards_locations': [(0, 0)],
-            'vases_placements': None,
-            'vases_locations': [(-1.3, 0.9)],
-            'pillars_placements': None,
-            'pillars_locations': [(1.3, 0.9)],
-            'hazards_size': 0.4,
-            'pillars_size': 0.2,
-            'vases_size': 0.2,
-            'hazards_cost': 30,
-            'vases_contact_cost': 30,
-            'pillars_cost': 30,
-    }
+#     base_config = gym.make('Safexp-PointGoal1-v0').config
+#     new_config = {
+#             'robot_locations': [(0, -1.5)],
+#             'robot_rot': np.pi * (1/2),
+#             'goal_locations': [(0, 1.5)],
+#             'hazards_num': 1,
+#             'vases_num': 1,
+#             'pillars_num': 1,
+#             'observe_vases': True,
+#             'observe_pillars': True,
+#             'constrain_vases': True,
+#             'constrain_pillars': True,
+#             'hazards_placements': None,
+#             'hazards_locations': [(0, 0)],
+#             'vases_placements': None,
+#             'vases_locations': [(-1.3, 0.9)],
+#             'pillars_placements': None,
+#             'pillars_locations': [(1.3, 0.9)],
+#             'hazards_size': 0.4,
+#             'pillars_size': 0.2,
+#             'vases_size': 0.2,
+#             'hazards_cost': 30,
+#             'vases_contact_cost': 30,
+#             'pillars_cost': 30,
+#     }
 
-    for k, v in new_config.items():
-        assert k in base_config.keys(), 'BAD CONFIG'
-        base_config[k] = v
+#     for k, v in new_config.items():
+#         assert k in base_config.keys(), 'BAD CONFIG'
+#         base_config[k] = v
 
-    register(id='Safexp-PointGoalThree0-v0',
-             entry_point='safety_gym.envs.mujoco:Engine',
-             kwargs={'config': base_config})
+#     register(id='Safexp-PointGoalThree0-v0',
+#              entry_point='safety_gym.envs.mujoco:Engine',
+#              kwargs={'config': base_config})
 
-    base_config = gym.make('Safexp-PointGoal1-v0').config
-    new_config = {
-        'robot_locations': [(0, -1.5)],
-        'robot_rot': np.pi * (1/2),
-        'goal_locations': [(0, 0)],
-        'hazards_num': 3,
-        'vases_num': 0,
-        'observe_vases': False,
-        'hazards_placements': None,
-        'hazards_locations': [(-1.3, 0.9), (1.3, 0.9), (0, 1.5)],
-        'hazards_size': 0.4,
-        'hazards_cost': 30,
-    }
+#     base_config = gym.make('Safexp-PointGoal1-v0').config
+#     new_config = {
+#         'robot_locations': [(0, -1.5)],
+#         'robot_rot': np.pi * (1/2),
+#         'goal_locations': [(0, 0)],
+#         'hazards_num': 3,
+#         'vases_num': 0,
+#         'observe_vases': False,
+#         'hazards_placements': None,
+#         'hazards_locations': [(-1.3, 0.9), (1.3, 0.9), (0, 1.5)],
+#         'hazards_size': 0.4,
+#         'hazards_cost': 30,
+#     }
 
-    for k, v in new_config.items():
-        assert k in base_config.keys(), 'BAD CONFIG'
-        base_config[k] = v
+#     for k, v in new_config.items():
+#         assert k in base_config.keys(), 'BAD CONFIG'
+#         base_config[k] = v
 
-    register(id='Safexp-PointGoalBehind0-v0',
-             entry_point='safety_gym.envs.mujoco:Engine',
-             kwargs={'config': base_config})
+#     register(id='Safexp-PointGoalBehind0-v0',
+#              entry_point='safety_gym.envs.mujoco:Engine',
+#              kwargs={'config': base_config})
 
 
 if __name__ == '__main__':
@@ -246,22 +247,23 @@ if __name__ == '__main__':
     assert args['number_skills'] % args['n_workers'] == 0, \
         "number of skills should be set as a multiple of n_workers"
 
-    config = {
-        'continue_goal': False,
-        'reward_includes_cost': True,
-        'hazards_cost': 30.,
-        'constrain_indicator': False,
-        'reward_clip': 20,
-        'reward_goal': 0,
-    }
+#     config = {
+#         'continue_goal': False,
+#         'reward_includes_cost': True,
+#         'hazards_cost': 30.,
+#         'constrain_indicator': False,
+#         'reward_clip': 20,
+#         'reward_goal': 0,
+#     }
 
     args['name'] = (
         args['name'] + '_' + time.ctime().replace(' ', '_')
     )
 
-    kwargs = {**args, **config}
+    # kwargs = {**args, **config}
+    kwargs = {**args}
 
-    register_envs()
+    # register_envs()
 
     args['seed'] = (
         args['seed'] if 'seed' in args.keys() else np.random.randint(0, 1000)

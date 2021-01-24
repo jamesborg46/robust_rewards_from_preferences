@@ -167,8 +167,8 @@ class DIAYN(SAC):
 
             if trainer.step_itr and trainer.step_itr % 2 == 0:
                 self._log_episodes(trainer,
-                                   capture_render=False,
-                                   capture_state=True)
+                                   capture_render=True,
+                                   capture_state=False)
 
             self._log_statistics(policy_loss,
                                  qf1_loss,
