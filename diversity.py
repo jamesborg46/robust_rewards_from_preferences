@@ -51,7 +51,6 @@ def diversity_is_all_you_need(ctxt=None,
 
     set_seed(seed)
     env = gym.make(env_id)
-    config = env.config
 
     if isinstance(env, Engine):
         config = env.config
@@ -59,11 +58,10 @@ def diversity_is_all_you_need(ctxt=None,
         with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') as outfile:
             json.dump(config, outfile)
 
-    # env = Engine(config)
     env.metadata['render.modes'] = ['rgb_array']
 
     env = DiversityWrapper(env, number_skills=number_skills)
-    # env = SafetyEnvStateAppender(env)
+    env = SafetyEnvStateAppender(env)
     env = GymEnv(env, max_episode_length=max_episode_length)
 
     with open(os.path.join(ctxt.snapshot_dir, 'env.pkl'), 'wb') as outfile:

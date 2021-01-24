@@ -6,8 +6,7 @@ from collections import OrderedDict
 from garage import StepType
 from garage.torch.algos import SAC
 from garage.torch import dict_np_to_torch, global_device
-from garage import log_performance, obtain_evaluation_episodes
-from garage import EpisodeBatch
+from garage import obtain_evaluation_episodes
 from garage.sampler.env_update import EnvUpdate
 
 import torch.nn.functional as F
@@ -16,15 +15,13 @@ import pickle
 import os
 import os.path as osp
 from utils.video import export_video
+from utils import split_flattened, one_hot_to_int
 from collections import defaultdict
 
-def get_skill_ints(observations, number_of_skills):
-    skill_one_hot = observations[:, :number_of_skills]
-    skills = np.tile(
-        np.arange(number_of_skills),
-        (observations.shape[0], 1)
-    )[skill_one_hot.astype(bool)].flatten()
-    return skills
+# def get_skill_ints(observations, number_of_skills):
+#     observations = split_flattened(observations)
+#     skill_one_hot = observations['skill']
+#     one_hot_to_int(skill_one_hot)
 
 
 def agent_update(policy, device='cpu'):
@@ -117,7 +114,8 @@ class DIAYN(SAC):
         self.number_skills = number_skills
         self.collect_skill_freq = collect_skill_freq
         self._discriminator_lr = discriminator_lr
-        self._discriminator_gradient_steps = discriminator_gradient_steps_per_itr
+        self._discriminator_gradient_steps = \
+            discriminator_gradient_steps_per_itr
         self._discriminator_optimizer = self._optimizer(
             self.discriminator.parameters(),
             lr=self._discriminator_lr)
@@ -136,7 +134,6 @@ class DIAYN(SAC):
         """
         if not self._eval_env:
             self._eval_env = trainer.get_env_copy()
-        last_return = None
         for _ in trainer.step_epochs():
             for _ in range(self._steps_per_epoch):
                 if not (self.replay_buffer.n_transitions_stored >=
@@ -144,22 +141,50 @@ class DIAYN(SAC):
                     batch_size = int(self._min_buffer_size)
                 else:
                     batch_size = None
-                trainer.step_path = trainer.obtain_samples(
+
+                # trainer.step_path = trainer.obtain_samples(
+                #     trainer.step_itr,
+                #     batch_size,
+                #     agent_update=agent_update(self.policy),
+                # )
+
+                episodes = trainer.obtain_episodes(
                     trainer.step_itr,
                     batch_size,
                     agent_update=agent_update(self.policy),
                 )
 
-                for path in trainer.step_path:
-                    self.replay_buffer.add_path(
-                        dict(observation=path['observations'],
-                             action=path['actions'],
-                             reward=path['rewards'].reshape(-1, 1),
-                             next_observation=path['next_observations'],
-                             terminal=np.array([
-                                 step_type == StepType.TERMINAL
-                                 for step_type in path['step_types']
-                             ]).reshape(-1, 1)))
+                # self.replay_buffer.add_episode_batch(episodes)
+
+                env_spec = episodes.env_spec
+                obs_space = env_spec.observation_space
+                for eps in episodes.split():
+                    terminals = np.array([
+                        step_type == StepType.TERMINAL
+                        for step_type in eps.step_types
+                    ],
+                                         dtype=bool)
+                    path = {
+                        'observation': obs_space.flatten_n(eps.observations),
+                        'next_observation':
+                        obs_space.flatten_n(eps.next_observations),
+                        'action': env_spec.action_space.flatten_n(eps.actions),
+                        'reward': eps.rewards.reshape(-1, 1),
+                        'terminal': terminals.reshape(-1, 1),
+                    }
+                    self.replay_buffer.add_path(path)
+
+                # for path in trainer.step_path:
+                #     breakpoint()
+                #     self.replay_buffer.add_path(
+                #         dict(observation=path['observations'],
+                #              action=path['actions'],
+                #              reward=path['rewards'].reshape(-1, 1),
+                #              next_observation=path['next_observations'],
+                #              terminal=np.array([
+                #                  step_type == StepType.TERMINAL
+                #                  for step_type in path['step_types']
+                #              ]).reshape(-1, 1)))
 
                 for _ in range(self._gradient_steps):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
@@ -176,11 +201,11 @@ class DIAYN(SAC):
                                  discriminator_loss)
 
             tabular.record('TotalEnvSteps', trainer.total_env_steps)
-            tabular.record(
-                'Policy/AverageActionStd',
-                np.mean([np.exp(path['agent_infos']['log_std']) for
-                         path in trainer.step_path])
-            )
+            # tabular.record(
+            #     'Policy/AverageActionStd',
+            #     np.mean([np.exp(path['agent_infos']['log_std']) for
+            #              path in trainer.step_path])
+            # )
 
             trainer.step_itr += 1
 
@@ -215,7 +240,7 @@ class DIAYN(SAC):
         Args:
             samples_data (dict): Transitions(S,A,R,S') that are sampled from
                 the replay buffer. It should have the keys 'observation',
-                'action', 'reward', 'terminal', and 'next_observations'.
+                'action', 'reward', 'terminal', and 'next_observation'.
             new_actions (torch.Tensor): Actions resampled from the policy based
                 based on the Observations, obs, which were sampled from the
                 replay buffer. Shape is (action_dim, buffer_batch_size).
@@ -244,7 +269,10 @@ class DIAYN(SAC):
         tabular.record('Policy/AverageEntropy',
                        -torch.mean(log_pi_new_actions).cpu().detach().numpy())
 
-        skills = get_skill_ints(obs.cpu().detach().numpy(), self.number_skills)
+        obs_space = self.env_spec.observation_space
+        observations = split_flattened(obs_space, obs)
+        skill_one_hot = observations['skill']
+        skills = one_hot_to_int(skill_one_hot)
         skills, counts = np.unique(skills, return_counts=True)
         tabular.record('Policy/NumberSkills', len(skills))
         tabular.record('Policy/SkillCountMax', counts.max())
@@ -318,15 +346,15 @@ class DIAYN(SAC):
 
     def _render_skills(self, episodes, directory, epoch):
         episodes_per_skill = defaultdict(int)
+        obs_space = self.env_spec.observation_space
         for ep in episodes.to_list():
             frames = (
                 [f[::-1, :] for f in ep["env_infos"]['render']]
             )
 
-            skill = int(get_skill_ints(
-                ep['observations'],
-                self.number_skills
-            )[0])
+            observations = split_flattened(obs_space, ep['observations'])
+            skill_one_hot = observations['skill']
+            skill = one_hot_to_int(skill_one_hot)[0]
 
             fname = osp.join(
                 directory,
@@ -347,14 +375,11 @@ class DIAYN(SAC):
             self._buffer_batch_size)
         del samples['reward']
         samples = dict_np_to_torch(samples)
-        observations = samples['observation']
-        skills_one_hot = observations[:, :self.number_skills]
-        skills = (torch.arange(self.number_skills)
-                       .reshape(1, -1)
-                       .repeat(observations.shape[0], 1)
-                  )[skills_one_hot.type(torch.bool)].to(global_device())
-
-        states = samples['observation'][:, self.number_skills:]
+        space = self.env_spec.observation_space
+        observations = split_flattened(space, samples['observation'])
+        skills_one_hot = observations['skill']
+        states = observations['state']
+        skills = one_hot_to_int(skills_one_hot).to(global_device())
 
         log_probs = self.discriminator(states)
         loss = F.nll_loss(log_probs, skills)
@@ -387,22 +412,23 @@ class DIAYN(SAC):
         # tabular.record('Average/TrainAverageReturn',
         #                np.mean(self.episode_rewards))
 
-    def diversity_reward(self, observations, skills):
+    def diversity_reward(self, states, skills):
         log_q = self.discriminator(
-            torch.tensor(observations.astype(np.float32)).to(global_device())
-        )[range(observations.shape[0]), skills]
+            torch.tensor(states.astype(np.float32)).to(global_device())
+        )[range(states.shape[0]), skills]
 
         log_p = torch.log(torch.tensor(1/self.number_skills))
 
         return log_q - log_p
 
     def update_diversity_rewards_in_buffer_samples(self, path):
-        observations = path['observation']
-        states = observations[:, self.number_skills:]
-        skills_one_hot = observations[:, :self.number_skills]
-        skills = np.repeat(np.arange(self.number_skills).reshape(1, -1),
-                           observations.shape[0],
-                           axis=0)[skills_one_hot.astype(bool)]
+        space = self.env_spec.observation_space
+        observations = split_flattened(space, path['observation'])
+        states = observations['state']
+        skills_one_hot = observations['skill']
+        # states = observations[:, self.number_skills:]
+        # skills_one_hot = observations[:, :self.number_skills]
+        skills = one_hot_to_int(skills_one_hot)
 
         with torch.no_grad():
             rewards = self.diversity_reward(states, skills).cpu().numpy()
@@ -410,29 +436,29 @@ class DIAYN(SAC):
         path['reward'] = rewards.reshape((-1, 1))
         return path
 
-    def update_diversity_rewards_in_step_path(self, step_path):
-        lengths = []
-        observations = []
-        for path in step_path:
-            observations.append(path['observations'])
-            lengths.append(path['observations'].shape[0])
-        observations = np.concatenate(observations, axis=0)
+    # def update_diversity_rewards_in_step_path(self, step_path):
+    #     lengths = []
+    #     observations = []
+    #     for path in step_path:
+    #         observations.append(path['observation'])
+    #         lengths.append(path['observation'].shape[0])
+    #     observations = np.concatenate(observations, axis=0)
 
-        states = observations[:, self.number_skills:]
-        skills_one_hot = observations[:, :self.number_skills]
-        skills = np.repeat(np.arange(self.number_skills).reshape(1, -1),
-                           observations.shape[0],
-                           axis=0)[skills_one_hot.astype(bool)]
+    #     states = observations[:, self.number_skills:]
+    #     skills_one_hot = observations[:, :self.number_skills]
+    #     skills = np.repeat(np.arange(self.number_skills).reshape(1, -1),
+    #                        observations.shape[0],
+    #                        axis=0)[skills_one_hot.astype(bool)]
 
-        with torch.no_grad():
-            rewards = self.diversity_reward(states, skills).cpu().numpy()
+    #     with torch.no_grad():
+    #         rewards = self.diversity_reward(states, skills).cpu().numpy()
 
-        start = 0
-        for length, path in zip(lengths, step_path):
-            path['rewards'] = np.array(rewards[start:start+length])
-            start += length
+    #     start = 0
+    #     for length, path in zip(lengths, step_path):
+    #         path['reward'] = np.array(rewards[start:start+length])
+    #         start += length
 
-        return step_path
+    #     return step_path
 
     @property
     def networks(self):
@@ -446,4 +472,3 @@ class DIAYN(SAC):
             self.policy, self._qf1, self._qf2, self._target_qf1,
             self._target_qf2, self.discriminator
         ]
-

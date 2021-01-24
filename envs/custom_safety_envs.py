@@ -69,4 +69,6 @@ three = {
 irl_goal_base = suite.bench_base.copy('IRLGoal', common)
 irl_goal_base.register('Front', front)
 irl_goal_base.register('Behind', behind)
+
+# Savexp-PointIRLGoalThree-v0'
 irl_goal_base.register('Three', three)

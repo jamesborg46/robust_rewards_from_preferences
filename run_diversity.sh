@@ -1,6 +1,6 @@
 python diversity.py \
     --name COLLECTING_EPISODES \
-    --env_id Breakout-v0 \
+    --env_id Safexp-PointIRLGoalThree-v0 \
     --n_workers 2 \
     --batch_size 4000 \
     --number_skills 4 \

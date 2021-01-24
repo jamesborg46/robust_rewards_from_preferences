@@ -2,6 +2,7 @@
 import gym
 from gym import spaces
 import numpy as np
+from gym.spaces import Dict, Discrete
 
 from garage.torch import global_device
 import torch
@@ -14,41 +15,45 @@ class DiversityWrapper(gym.Wrapper):
 
         self.number_skills = number_skills
         self.original_obs_space = env.observation_space
-        self.init_new_obs_space()
+        # self.init_new_obs_space()
+        self.observation_space = Dict({
+            'state': self.original_obs_space,
+            'skill': Discrete(number_skills)
+        })
         self.skill = None
         self.skill_mode = skill_mode
 
-    def init_new_obs_space(self):
-        if isinstance(self.env.observation_space, spaces.Box) and \
-                len(self.env.observation_space.shape) == 1:
+    # def init_new_obs_space(self):
+    #     if isinstance(self.env.observation_space, spaces.Box) and \
+    #             len(self.env.observation_space.shape) == 1:
 
-            obs_size = self.env.observation_space.shape[0]
-            low = self.env.observation_space.low
-            high = self.env.observation_space.high
+    #         obs_size = self.env.observation_space.shape[0]
+    #         low = self.env.observation_space.low
+    #         high = self.env.observation_space.high
 
-            if not np.isscalar(low):
-                assert high.shape == low.shape
-                new_low = np.concatenate(
-                    [np.zeros(self.number_skills), low]
-                )
-                new_high = np.concatenate(
-                    [np.ones(self.number_skills), high]
-                )
-                new_obs_shape = None
-            else:
-                new_high = max(low, 1)
-                new_low = min(low, 0)
-                new_obs_shape = (obs_size + self.number_skills, )
+    #         if not np.isscalar(low):
+    #             assert high.shape == low.shape
+    #             new_low = np.concatenate(
+    #                 [np.zeros(self.number_skills), low]
+    #             )
+    #             new_high = np.concatenate(
+    #                 [np.ones(self.number_skills), high]
+    #             )
+    #             new_obs_shape = None
+    #         else:
+    #             new_high = max(low, 1)
+    #             new_low = min(low, 0)
+    #             new_obs_shape = (obs_size + self.number_skills, )
 
-            self.observation_space = spaces.Box(
-                low=new_low,
-                high=new_high,
-                shape=new_obs_shape
-            )
+    #         self.observation_space = spaces.Box(
+    #             low=new_low,
+    #             high=new_high,
+    #             shape=new_obs_shape
+    #         )
 
-        else:
-            raise NotImplementedError(
-                'Only box spaces of one dimension handled in diversity mask')
+    #     else:
+    #         raise NotImplementedError(
+    #             'Only box spaces of one dimension handled in diversity mask')
 
     def set_skill_mode(self, skill_mode):
         if skill_mode not in ['random', 'consecutive', 'constant']:
@@ -75,16 +80,17 @@ class DiversityWrapper(gym.Wrapper):
         else:
             raise Exception()
 
-        self.skill_one_hot = np.zeros(self.number_skills)
-        self.skill_one_hot[self.skill] = 1
+        # self.skill_one_hot = np.zeros(self.number_skills)
+        # self.skill_one_hot[self.skill] = 1
 
         obs = self.env.reset()
-        new_obs = np.concatenate([self.skill_one_hot, obs])
-        return new_obs
+        # new_obs = np.concatenate([self.skill_one_hot, obs])
+        return {'state': obs, 'skill': self.skill}
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
         info['gt_reward'] = reward
-        new_obs = np.concatenate([self.skill_one_hot, obs])
+        # new_obs = np.concatenate([self.skill_one_hot, obs])
+        new_obs = {'state': obs, 'skill': self.skill}
         return new_obs, None, done, info
 
