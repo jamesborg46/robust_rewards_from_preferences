@@ -53,11 +53,11 @@ def diversity_is_all_you_need(ctxt=None,
     env = gym.make(env_id)
     config = env.config
 
-    # for k, v in kwargs.items():
-    #     config[k] = v
+    if isinstance(env, Engine):
+        config = env.config
 
-    with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') as outfile:
-        json.dump(config, outfile)
+        with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') as outfile:
+            json.dump(config, outfile)
 
     # env = Engine(config)
     env.metadata['render.modes'] = ['rgb_array']
