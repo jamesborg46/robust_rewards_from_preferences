@@ -1,6 +1,7 @@
 FROM jamesborg46/environment
 MAINTAINER James Borg <jamesborg46@gmail.com>
 
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg2 curl ca-certificates && \
     curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub | apt-key add - && \
@@ -78,7 +79,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && \
-    apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3
+    apt-get install -q -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffmpeg curl patchelf libglfw3 libglfw3-dev cmake zlib1g zlib1g-dev swig
 
 RUN ln -s /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGL.so
 
@@ -86,6 +87,7 @@ RUN conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
 RUN pip install Django==1.8
 RUN pip install dowel==0.0.3
 RUN pip install git+https://github.com/Indoril007/garage.git@james
+RUN pip install gym\[atari\]
 
 RUN apt-get install -y unzip
 # MUJOCO
