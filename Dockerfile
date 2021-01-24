@@ -81,8 +81,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && \
     apt-get install -q -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffmpeg curl patchelf libglfw3 libglfw3-dev cmake zlib1g zlib1g-dev swig
 
-RUN ln -s /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-gnu/libGL.so
-
 RUN conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
 RUN pip install Django==1.8
 RUN pip install dowel==0.0.3
