@@ -89,12 +89,12 @@ class ComparisonCollector(abc.ABC):
         return length
 
     def add_path(self, path):
-        l = self._get_path_length(path)
-        while (l + self.n_transitions_stored) > self._capacity:
+        length = self._get_path_length(path)
+        while (length + self.n_transitions_stored) > self._capacity:
             removed = self._paths.popleft()
             self.n_transitions_stored -= self._get_path_length(removed)
         self._paths.append(path)
-        self.n_transitions_stored += l
+        self.n_transitions_stored += length
 
     def sample_path(self):
         path_idx = np.random.randint(len(self._paths))

@@ -290,6 +290,8 @@ def validate_reward_predictor(reward_predictor,
 
     with tabular.prefix('/RewardExperiments'):
         tabular.record('/MeanRewPath', np.mean(means))
+
+
 def get_data_from_pairwise(comparison_collector):
     labeled_comparisons = comparison_collector.labeled_decisive_comparisons
 

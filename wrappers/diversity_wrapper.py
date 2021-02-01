@@ -15,45 +15,12 @@ class DiversityWrapper(gym.Wrapper):
 
         self.number_skills = number_skills
         self.original_obs_space = env.observation_space
-        # self.init_new_obs_space()
         self.observation_space = Dict({
             'state': self.original_obs_space,
             'skill': Discrete(number_skills)
         })
         self.skill = None
         self.skill_mode = skill_mode
-
-    # def init_new_obs_space(self):
-    #     if isinstance(self.env.observation_space, spaces.Box) and \
-    #             len(self.env.observation_space.shape) == 1:
-
-    #         obs_size = self.env.observation_space.shape[0]
-    #         low = self.env.observation_space.low
-    #         high = self.env.observation_space.high
-
-    #         if not np.isscalar(low):
-    #             assert high.shape == low.shape
-    #             new_low = np.concatenate(
-    #                 [np.zeros(self.number_skills), low]
-    #             )
-    #             new_high = np.concatenate(
-    #                 [np.ones(self.number_skills), high]
-    #             )
-    #             new_obs_shape = None
-    #         else:
-    #             new_high = max(low, 1)
-    #             new_low = min(low, 0)
-    #             new_obs_shape = (obs_size + self.number_skills, )
-
-    #         self.observation_space = spaces.Box(
-    #             low=new_low,
-    #             high=new_high,
-    #             shape=new_obs_shape
-    #         )
-
-    #     else:
-    #         raise NotImplementedError(
-    #             'Only box spaces of one dimension handled in diversity mask')
 
     def set_skill_mode(self, skill_mode):
         if skill_mode not in ['random', 'consecutive', 'constant']:
@@ -65,6 +32,7 @@ class DiversityWrapper(gym.Wrapper):
     def set_skill(self, skill):
         if skill is not None:
             self.skill = skill
+            self.metadata['skill'] = skill
 
     def reset(self):
         if self.skill_mode not in ['random', 'consecutive', 'constant']:
@@ -72,19 +40,20 @@ class DiversityWrapper(gym.Wrapper):
                              "constant")
 
         if self.skill_mode == 'random':
-            self.skill = np.random.randint(low=0, high=self.number_skills)
+            self.set_skill(
+                np.random.randint(low=0, high=self.number_skills)
+            )
         elif self.skill_mode == 'consecutive':
-            self.skill = (self.skill + 1) % self.number_skills
+            self.set_skill(
+                (self.skill + 1) % self.number_skills
+            )
         elif self.skill_mode == 'constant':
             pass
         else:
             raise Exception()
 
-        # self.skill_one_hot = np.zeros(self.number_skills)
-        # self.skill_one_hot[self.skill] = 1
-
         obs = self.env.reset()
-        # new_obs = np.concatenate([self.skill_one_hot, obs])
+
         return {'state': obs, 'skill': self.skill}
 
     def step(self, action):

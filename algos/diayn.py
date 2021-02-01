@@ -35,18 +35,21 @@ class EnvConfigUpdate(EnvUpdate):
 
     def __init__(self,
                  capture_state=False,
-                 capture_render=False,
+                 enable_render=False,
                  skill_mode='random',
-                 skill=None):
+                 skill=None,
+                 file_prefix=""):
 
         self.capture_state = capture_state
-        self.capture_render = capture_render
+        self.enable_render = enable_render
         self.skill_mode = skill_mode
         self.skill = skill
+        self.file_prefix = file_prefix
 
     def __call__(self, old_env):
         old_env.set_capture_state(self.capture_state)
-        old_env.set_capture_render(self.capture_render)
+        old_env.enable_rendering(self.enable_render,
+                                 file_prefix=self.file_prefix)
         old_env.set_skill_mode(self.skill_mode)
         old_env.set_skill(self.skill)
         return old_env
@@ -64,7 +67,7 @@ class DIAYN(SAC):
         replay_buffer,
         *,  # Everything after this is numbers.
         number_skills=10,
-        collect_skill_freq,
+        render_freq=200,
         max_episode_length_eval=None,
         gradient_steps_per_itr,
         discriminator_gradient_steps_per_itr,
@@ -112,7 +115,7 @@ class DIAYN(SAC):
 
         self.discriminator = discriminator
         self.number_skills = number_skills
-        self.collect_skill_freq = collect_skill_freq
+        self.render_freq = render_freq
         self._discriminator_lr = discriminator_lr
         self._discriminator_gradient_steps = \
             discriminator_gradient_steps_per_itr
@@ -190,10 +193,10 @@ class DIAYN(SAC):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
                     discriminator_loss = self.train_discriminator()
 
-            if trainer.step_itr and trainer.step_itr % 2 == 0:
+            if trainer.step_itr and trainer.step_itr % self.render_freq == 0:
                 self._log_episodes(trainer,
-                                   capture_render=True,
-                                   capture_state=False)
+                                   enable_render=True,
+                                   capture_state=True)
 
             self._log_statistics(policy_loss,
                                  qf1_loss,
@@ -273,7 +276,7 @@ class DIAYN(SAC):
         observations = split_flattened(obs_space, obs)
         skill_one_hot = observations['skill']
         skills = one_hot_to_int(skill_one_hot)
-        skills, counts = np.unique(skills, return_counts=True)
+        skills, counts = np.unique(skills.cpu().detach(), return_counts=True)
         tabular.record('Policy/NumberSkills', len(skills))
         tabular.record('Policy/SkillCountMax', counts.max())
         tabular.record('Policy/SkillCountMin', counts.min())
@@ -283,8 +286,9 @@ class DIAYN(SAC):
     def get_eval_episodes(self,
                           sampler,
                           n_workers,
+                          epoch,
                           episodes_per_skill=1,
-                          capture_render=False,
+                          enable_render=False,
                           capture_state=False):
 
         assert self.number_skills % n_workers == 0
@@ -294,9 +298,10 @@ class DIAYN(SAC):
         for i in range(n_workers):
             env_updates.append(EnvConfigUpdate(
                 capture_state=capture_state,
-                capture_render=capture_render,
+                enable_render=enable_render,
                 skill_mode='consecutive',
                 skill=int(i*skills_per_worker),
+                file_prefix=f"epoch_{epoch:04}_worker_{i:02}_"
             ))
 
         sampler._update_workers(
@@ -305,7 +310,7 @@ class DIAYN(SAC):
         )
 
         episodes = sampler.obtain_exact_episodes(
-            n_eps_per_worker=skills_per_worker*episodes_per_skill,
+            n_eps_per_worker=int(skills_per_worker*episodes_per_skill),
             agent_update=agent_update(self.policy)
         )
 
@@ -313,25 +318,31 @@ class DIAYN(SAC):
 
     def _log_episodes(self,
                       trainer,
-                      capture_render=False,
+                      enable_render=False,
                       capture_state=False):
         """
         Retrieves evaluation episodes and can render into videos or log as pkl
         files
         """
+
         eval_episodes = self.get_eval_episodes(
             sampler=trainer._eval_sampler,
             n_workers=trainer._eval_n_workers,
-            episodes_per_skill=2,
-            capture_render=capture_render,
-            capture_state=capture_state)
+            epoch=trainer.step_itr,
+            episodes_per_skill=3,
+            enable_render=enable_render,
+            capture_state=capture_state,
+        )
 
-        if capture_render:
-            self._render_skills(
-                eval_episodes,
-                osp.join(trainer._snapshotter.snapshot_dir, 'videos'),
-                trainer.step_itr
-            )
+#         if capture_render:
+#             self._render_skills(
+#                 eval_episodes,
+#                 osp.join(trainer._snapshotter.snapshot_dir, 'videos'),
+#                 trainer.step_itr
+#             )
+
+        # Delete renderings before saving pickle because they are very large
+        # del eval_episodes.env_infos['render']
 
         if capture_state:
             fname = osp.join(trainer._snapshotter.snapshot_dir,
@@ -344,30 +355,32 @@ class DIAYN(SAC):
             with open(fname, 'wb') as f:
                 pickle.dump(eval_episodes, f)
 
-    def _render_skills(self, episodes, directory, epoch):
-        episodes_per_skill = defaultdict(int)
-        obs_space = self.env_spec.observation_space
-        for ep in episodes.to_list():
-            frames = (
-                [f[::-1, :] for f in ep["env_infos"]['render']]
-            )
+#     def _render_skills(self, episodes, directory, epoch):
+#         episodes_per_skill = defaultdict(int)
+#         obs_space = self.env_spec.observation_space
+#         for ep in episodes.to_list():
+#             frames = (
+#                 [f[::-1, :] for f in ep["env_infos"]['render']]
+#             )
 
-            observations = split_flattened(obs_space, ep['observations'])
-            skill_one_hot = observations['skill']
-            skill = one_hot_to_int(skill_one_hot)[0]
+#             skill_one_hot = np.array(
+#                 [obs_space.flatten_with_keys(x, keys=['skill'])
+#                  for x in ep['observations']])
 
-            fname = osp.join(
-                directory,
-                f'epoch_{epoch}',
-                f'skill_{skill:03}_ep_{episodes_per_skill[skill]:02}.mp4'
-            )
+#             skill = one_hot_to_int(skill_one_hot)[0]
 
-            episodes_per_skill[skill] += 1
+#             fname = osp.join(
+#                 directory,
+#                 f'epoch_{epoch}',
+#                 f'skill_{skill:03}_ep_{episodes_per_skill[skill]:02}.mp4'
+#             )
 
-            if not osp.isdir(osp.dirname(fname)):
-                os.makedirs(osp.dirname(fname))
+#             episodes_per_skill[skill] += 1
 
-            export_video(frames, fname)
+#             if not osp.isdir(osp.dirname(fname)):
+#                 os.makedirs(osp.dirname(fname))
+
+#             export_video(frames, fname)
 
     def train_discriminator(self):
         self._discriminator_optimizer.zero_grad()

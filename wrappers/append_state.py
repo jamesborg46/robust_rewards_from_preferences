@@ -4,13 +4,9 @@ from mujoco_py import MjSim, load_model_from_xml
 
 
 class SafetyEnvStateAppender(gym.Wrapper):
-    def __init__(self, env, capture_state=False, capture_render=False):
+    def __init__(self, env, capture_state=False):
         super().__init__(env)
-        self.capture_render = capture_render
         self.capture_state = capture_state
-
-    def set_capture_render(self, capture_render):
-        self.capture_render = capture_render
 
     def set_capture_state(self, capture_state):
         self.capture_state = capture_state
@@ -25,13 +21,7 @@ class SafetyEnvStateAppender(gym.Wrapper):
         if self.capture_state:
             state = self.env.world.sim.get_state()
 
-        if self.capture_render:
-            render = self.env.render('rgb_array')
-
         obs, reward, done, info = self.env.step(action)
-
-        if self.capture_render:
-            info['render'] = render
 
         if self.capture_state:
             info['state'] = state.flatten()

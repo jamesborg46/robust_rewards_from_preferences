@@ -16,18 +16,16 @@ from garage.sampler import LocalSampler, RaySampler
 from garage.trainer import Trainer
 
 import gym
-from gym.envs.registration import register
 import safety_gym
+import envs.custom_safety_envs
 from safety_gym.envs.engine import Engine
 from gym.wrappers import Monitor
 from wrappers import RewardMasker, SafetyEnvStateAppender
 from algos import PreferenceTRPO
-from buffers import SyntheticComparisonCollector, HumanComparisonCollector, LabelAnnealer
-from reward_predictors import MLPRewardPredictor, BNNRewardPredictor
+from buffers import SyntheticComparisonCollector, \
+    HumanComparisonCollector, LabelAnnealer
+from reward_predictors import MLPRewardPredictor
 
-import numpy as np
-
-from datetime import datetime
 import time
 import os
 import argparse
@@ -66,30 +64,22 @@ def robust_preferences(ctxt=None,
 
     set_seed(seed)
     env = gym.make(env_id)
-    config = env.config
 
-    for k, v in kwargs.items():
-        config[k] = v
+    if isinstance(env, Engine):
+        config = env.config
 
-    with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') as outfile:
-        json.dump(config, outfile)
+        with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') \
+                as outfile:
+            json.dump(config, outfile)
 
-    env = Engine(config)
     env.metadata['render.modes'] = ['rgb_array']
-
-    if monitor:
-        # Defining this because pickle doesn't pickle lambda functions
-        def video_callable(i):
-            return (i % 100 == 0) and (i != 0)
-
-        env = Monitor(env,
-                      ctxt.snapshot_dir + '/monitoring',
-                      force=True,
-                      video_callable=video_callable)
 
     env = RewardMasker(env)
     env = SafetyEnvStateAppender(env)
     env = GymEnv(env, max_episode_length=max_episode_length)
+
+    with open(os.path.join(ctxt.snapshot_dir, 'env.pkl'), 'wb') as outfile:
+        pickle.dump(env, outfile)
 
     trainer = Trainer(ctxt)
 
@@ -196,86 +186,6 @@ def robust_preferences(ctxt=None,
     trainer.train(n_epochs=number_epochs, batch_size=4000)
 
 
-def register_envs():
-
-    base_config = gym.make('Safexp-PointGoal1-v0').config
-    new_config = {
-        'robot_locations': [(0, -1.5)],
-        'robot_rot': np.pi * (1/2),
-        'goal_locations': [(0, 1.5)],
-        'hazards_num': 3,
-        'vases_num': 0,
-        'observe_vases': False,
-        'hazards_placements': None,
-        'hazards_locations': [(-1.3, 0.9), (1.3, 0.9), (0, 0)],
-        'hazards_size': 0.4,
-    }
-
-    for k, v in new_config.items():
-        assert k in base_config.keys(), 'BAD CONFIG'
-        base_config[k] = v
-
-    register(id='Safexp-PointGoalCustom0-v0',
-             entry_point='safety_gym.envs.mujoco:Engine',
-             kwargs={'config': base_config})
-
-    base_config = gym.make('Safexp-PointGoal1-v0').config
-    new_config = {
-            'robot_locations': [(0, -1.5)],
-            'robot_rot': np.pi * (1/2),
-            'goal_locations': [(0, 1.5)],
-            'hazards_num': 1,
-            'vases_num': 1,
-            'pillars_num': 1,
-            'observe_vases': True,
-            'observe_pillars': True,
-            'constrain_vases': True,
-            'constrain_pillars': True,
-            'hazards_placements': None,
-            'hazards_locations': [(0, 0)],
-            'vases_placements': None,
-            'vases_locations': [(-1.3, 0.9)],
-            'pillars_placements': None,
-            'pillars_locations': [(1.3, 0.9)],
-            'hazards_size': 0.4,
-            'pillars_size': 0.2,
-            'vases_size': 0.2,
-            'hazards_cost': 30,
-            'vases_contact_cost': 30,
-            'pillars_cost': 30,
-    }
-
-    for k, v in new_config.items():
-        assert k in base_config.keys(), 'BAD CONFIG'
-        base_config[k] = v
-
-    register(id='Safexp-PointGoalThree0-v0',
-             entry_point='safety_gym.envs.mujoco:Engine',
-             kwargs={'config': base_config})
-
-    base_config = gym.make('Safexp-PointGoal1-v0').config
-    new_config = {
-        'robot_locations': [(0, -1.5)],
-        'robot_rot': np.pi * (1/2),
-        'goal_locations': [(0, 0)],
-        'hazards_num': 3,
-        'vases_num': 0,
-        'observe_vases': False,
-        'hazards_placements': None,
-        'hazards_locations': [(-1.3, 0.9), (1.3, 0.9), (0, 1.5)],
-        'hazards_size': 0.4,
-        'hazards_cost': 30,
-    }
-
-    for k, v in new_config.items():
-        assert k in base_config.keys(), 'BAD CONFIG'
-        base_config[k] = v
-
-    register(id='Safexp-PointGoalBehind0-v0',
-             entry_point='safety_gym.envs.mujoco:Engine',
-             kwargs={'config': base_config})
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='preference reward learning')
     parser.add_argument('--seed', type=int, default=1)
@@ -287,13 +197,16 @@ if __name__ == '__main__':
                         required=False)
     parser.add_argument('--number_epochs', type=int, required=False)
     parser.add_argument('--segment_length', type=int, required=False)
+    parser.add_argument('--snapshot_gap', type=int, default=100)
     parser.add_argument('--max_episode_length', type=int, required=False)
     parser.add_argument('--final_labels', type=int, required=False)
     parser.add_argument('--pre_train_labels', type=int, required=False)
     parser.add_argument('--monitor', action='store_true', required=False)
-    parser.add_argument('--totally_ordered', action='store_true', required=False)
+    parser.add_argument('--totally_ordered',
+                        action='store_true', required=False)
     parser.add_argument('--local', action='store_true', required=False)
-    parser.add_argument('--use_gt_rewards', action='store_true', required=False)
+    parser.add_argument('--use_gt_rewards',
+                        action='store_true', required=False)
     parser.add_argument('--discount', type=float, required=False)
     parser.add_argument('--val_opt_its', type=int, required=False)
     parser.add_argument('--val_opt_lr', type=float, required=False)
@@ -307,21 +220,9 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     args = {k: v for k, v in args.items() if v is not None}
 
-    config = {
-        'continue_goal': False,
-        'reward_includes_cost': True,
-        'hazards_cost': 30.,
-        'constrain_indicator': False,
-        'reward_goal': 0,
-    }
-
     args['name'] = (
-        args['name'] + '_' + datetime.now().strftime("%m%d%Y_%H%M%S")
+        args['name'] + '_' + time.ctime().replace(' ', '_')
     )
-
-    kwargs = {**args, **config}
-
-    register_envs()
 
     experiment_dir = os.getenv('EXPERIMENT_LOGS',
                                default=os.path.join(os.getcwd(), 'experiment'))
@@ -332,8 +233,8 @@ if __name__ == '__main__':
     robust_preferences = wrap_experiment(
         robust_preferences,
         name=args['name'],
-        snapshot_gap=50,
+        snapshot_gap=args['snapshot_gap'],
         snapshot_mode='gapped_last',
         log_dir=log_dir,
     )
-    robust_preferences(**kwargs)
+    robust_preferences(**args)
