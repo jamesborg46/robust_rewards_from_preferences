@@ -8,3 +8,4 @@ notebooks/experiments
 *.png
 .mypy_cache/
 media/
+wandb/
