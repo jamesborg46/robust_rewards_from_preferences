@@ -1,2 +1,3 @@
-from reward_predictors.mlp_reward_predictor import MLPRewardPredictor
+from reward_predictors.reward_predictor import RewardPredictor
+from reward_predictors.pref_mlp import PrefMLP
 from reward_predictors.bnn_reward_predictor import BNNRewardPredictor

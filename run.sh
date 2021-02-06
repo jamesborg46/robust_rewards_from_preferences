@@ -1,48 +1,15 @@
 python robust_rewards.py \
     --seed 6 \
-    --name PRECOLLECTED_5_SEG_LENGTH_5_TOTALLY_ORDERED \
-    --env_id Safexp-PointGoalThree0-v0 \
-    --discount 0.99 \
-    --val_opt_its 50 \
-    --val_opt_lr 1e-3 \
-    --reward_opt_its 20 \
-    --reward_opt_lr 1e-3 \
-    --segment_length 5 \
-    --center_adv \
-    --local \
-    # --totally_ordered \
-    # --precollected_trajectories ./data/local/experiment/diversity_is_all_you_need_seed=10_name=fixed_eval_determinism_12042020_003752_number_skills=50_number_epochs=500_alpha=0.5_env_id=Safexp-PointGoalThree0-v0/comparison_collector.pkl
-# python robust_rewards.py \
-#     --seed 6 \
-#     --name RAW_5_SEG_LENGTH_5 \
-#     --env_id Safexp-PointGoalThree0-v0 \
-#     --discount 0.99 \
-#     --val_opt_its 200 \
-#     --val_opt_lr 1e-3 \
-#     --reward_opt_its 100 \
-#     --reward_opt_lr 1e-3 \
-#     --segment_length 5 \
-#     --center_adv 
-# python robust_rewards.py \
-#     --seed 6 \
-#     --name PRECOLLECTED_5_SEG_LENGTH_5 \
-#     --env_id Safexp-PointGoalThree0-v0 \
-#     --discount 0.99 \
-#     --val_opt_its 200 \
-#     --val_opt_lr 1e-4 \
-#     --reward_opt_its 100 \
-#     --reward_opt_lr 1e-3 \
-#     --segment_length 5 \
-#     --center_adv \
-#     --precollected_trajectories ./data/local/experiment/diversity_is_all_you_need_seed=10_name=fixed_eval_determinism_12042020_003752_number_skills=50_number_epochs=500_alpha=0.5_env_id=Safexp-PointGoalThree0-v0/comparison_collector.pkl
-# python robust_rewards.py \
-#     --seed 6 \
-#     --name RAW_5_SEG_LENGTH_5 \
-#     --env_id Safexp-PointGoalThree0-v0 \
-#     --discount 0.99 \
-#     --val_opt_its 200 \
-#     --val_opt_lr 1e-4 \
-#     --reward_opt_its 100 \
-#     --reward_opt_lr 1e-3 \
-#     --segment_length 5 \
-#     --center_adv \
+    --name TEST \
+    --env_id Safexp-PointIRLGoalThree-v0 \
+    --number_epochs 1000 \
+    --snapshot_gap 200 \
+    --max_episode_length 1000 \
+    --n_workers 2 \
+    --ray \
+    --policy "GaussianMLPPolicy(env.spec, hidden_sizes=[32, 32], hidden_nonlinearity=torch.tanh, output_nonlinearity=None)" \
+    --value_function "GaussianMLPValueFunction(env.spec, hidden_sizes=[32, 32], hidden_nonlinearity=torch.tanh, output_nonlinearity=None)" \
+    --label_scheduler "LabelAnnealer(number_epochs=kwargs['number_epochs'], final_labels=1000, pretrain_labels=200)" \
+    --data_collector "SyntheticPreferenceCollector(env.spec, label_scheduler, segment_length=1, max_capacity=20000)" \
+    --reward_predictor "PrefMLP(env.spec, preference_collector=data_collector)" \
+    --algo "IrlTRPO(env.spec, reward_predictor=reward_predictor, policy=policy, value_function=value_function)"
