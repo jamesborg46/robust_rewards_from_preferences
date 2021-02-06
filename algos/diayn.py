@@ -329,7 +329,7 @@ class DIAYN(SAC):
             sampler=trainer._eval_sampler,
             n_workers=trainer._eval_n_workers,
             epoch=trainer.step_itr,
-            episodes_per_skill=3,
+            episodes_per_skill=1,
             enable_render=enable_render,
             capture_state=capture_state,
         )
