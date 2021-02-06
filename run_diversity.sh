@@ -1,17 +1,17 @@
 python diversity.py \
-    --name DIVERSITY_RUN_$1 \
+    --name WANDB_LOGGING_TEST \
     --env_id Safexp-PointIRLGoalThree-v0 \
-    --n_workers 10 \
-    --batch_size 10000 \
-    --number_skills 20 \
+    --n_workers 2 \
+    --batch_size 2000 \
+    --number_skills 2 \
     --number_epochs 1001 \
     --seed 12 \
     --max_episode_length 1000 \
     --render_freq 200 \
-    --alpha 0.5 \
-    --ray \
-    --use_gpu \
-    --gpu_id $1
+    --alpha 0.5 
+    # --ray 
+    # --use_gpu \
+    # --gpu_id $1
 # python diversity.py \
 #     --name DIVERSITY_ALPHA_01 \
 #     --env_id Safexp-PointIRLGoalThree-v0 \

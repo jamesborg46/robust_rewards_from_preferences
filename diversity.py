@@ -29,6 +29,9 @@ import os
 
 import pickle
 
+import dowel
+from dowel import logger
+
 
 def diversity_is_all_you_need(ctxt=None,
                               seed=1,
@@ -165,6 +168,7 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     args = {k: v for k, v in args.items() if v is not None}
 
+
     assert args['number_skills'] % args['n_workers'] == 0, \
         "number of skills should be set as a multiple of n_workers"
 
@@ -174,6 +178,15 @@ if __name__ == '__main__':
 
     args['seed'] = (
         args['seed'] if 'seed' in args.keys() else np.random.randint(0, 1000)
+    )
+
+    logger.add_output(
+        dowel.WandbOutput(
+            project='diversity',
+            name=args['name'],
+            config=args,
+
+        )
     )
 
     experiment_dir = os.getenv('EXPERIMENT_LOGS',
