@@ -59,7 +59,7 @@ class Renderer(gym.Wrapper):
         self.names[name] += 1
 
         ep_id = self.names[name]
-        filename = name + f"_id_{ep_id:002}"
+        filename = name + f"id_{ep_id:002}"
 
         # Start recording the next video.
         self.video_recorder = video_recorder.VideoRecorder(
