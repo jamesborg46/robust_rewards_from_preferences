@@ -28,3 +28,34 @@ class IrlTRPO(TRPO):
             last_return = super()._train_once(itr, paths)
         self._reward_predictor.train_once(itr, paths)
         return last_return
+
+    # def _log_performance(self, itr, paths):
+    #     returns = []
+    #     undiscounted_returns = []
+    #     termination = []
+    #     success = []
+    #     for eps in batch.split():
+    #         returns.append(discount_cumsum(eps.rewards, discount))
+    #         undiscounted_returns.append(sum(eps.rewards))
+    #         termination.append(
+    #             float(
+    #                 any(step_type == StepType.TERMINAL
+    #                     for step_type in eps.step_types)))
+    #         if 'success' in eps.env_infos:
+    #             success.append(float(eps.env_infos['success'].any()))
+
+    #     average_discounted_return = np.mean([rtn[0] for rtn in returns])
+
+    #     with tabular.prefix(prefix + '/'):
+    #         tabular.record('Iteration', itr)
+    #         tabular.record('NumEpisodes', len(returns))
+
+    #         tabular.record('AverageDiscountedReturn', average_discounted_return)
+    #         tabular.record('AverageReturn', np.mean(undiscounted_returns))
+    #         tabular.record('StdReturn', np.std(undiscounted_returns))
+    #         tabular.record('MaxReturn', np.max(undiscounted_returns))
+    #         tabular.record('MinReturn', np.min(undiscounted_returns))
+    #         tabular.record('TerminationRate', np.mean(termination))
+    #         if success:
+    #             tabular.record('SuccessRate', np.mean(success))
+
