@@ -11,7 +11,7 @@ from garage.experiment.deterministic import set_seed
 from garage.torch import set_gpu_mode
 from garage.torch.policies import GaussianMLPPolicy  # noqa: F401
 from garage.torch.value_functions import GaussianMLPValueFunction  # noqa: F401
-from garage.sampler import LocalSampler, RaySampler
+from garage.sampler import LocalSampler, RaySampler, DefaultWorker
 from garage.trainer import Trainer
 
 import gym
@@ -49,7 +49,6 @@ def robust_preferences(ctxt,
             json.dump(config, outfile)
 
     env.metadata['render.modes'] = ['rgb_array']
-
     env = RewardMasker(env)
     env = SafetyEnvStateAppender(env)
     env = Renderer(env, directory=os.path.join(ctxt.snapshot_dir, 'videos'))
@@ -78,6 +77,12 @@ def robust_preferences(ctxt,
         env=env,
         sampler_cls=sampler,
         n_workers=kwargs['n_workers'],
+    )
+
+    trainer.eval_sampler_setup(
+        sampler_cls=sampler,
+        n_workers=kwargs['n_workers'],
+        worker_class=DefaultWorker,
     )
 
     trainer.train(n_epochs=kwargs['number_epochs'],

@@ -1,12 +1,10 @@
 import torch
 import numpy as np
 from dowel import tabular
-from collections import OrderedDict
 
 from garage import StepType
 from garage.torch.algos import SAC
 from garage.torch import dict_np_to_torch, global_device
-from garage import obtain_evaluation_episodes
 from garage.sampler.env_update import EnvUpdate
 
 import torch.nn.functional as F
@@ -14,21 +12,7 @@ import torch.nn.functional as F
 import pickle
 import os
 import os.path as osp
-from utils.video import export_video
-from utils import split_flattened, one_hot_to_int
-from collections import defaultdict
-
-# def get_skill_ints(observations, number_of_skills):
-#     observations = split_flattened(observations)
-#     skill_one_hot = observations['skill']
-#     one_hot_to_int(skill_one_hot)
-
-
-def agent_update(policy, device='cpu'):
-    state_dict = OrderedDict(
-        [(k, v.to(device)) for k, v in policy.state_dict().items()]
-    )
-    return state_dict
+from utils import split_flattened, one_hot_to_int, update_remote_agent_device
 
 
 class EnvConfigUpdate(EnvUpdate):
@@ -148,13 +132,13 @@ class DIAYN(SAC):
                 # trainer.step_path = trainer.obtain_samples(
                 #     trainer.step_itr,
                 #     batch_size,
-                #     agent_update=agent_update(self.policy),
+                #     agent_update=update_remote_agent_device(self.policy),
                 # )
 
                 episodes = trainer.obtain_episodes(
                     trainer.step_itr,
                     batch_size,
-                    agent_update=agent_update(self.policy),
+                    agent_update=update_remote_agent_device(self.policy),
                 )
 
                 # self.replay_buffer.add_episode_batch(episodes)
@@ -305,13 +289,13 @@ class DIAYN(SAC):
             ))
 
         sampler._update_workers(
-            agent_update=agent_update(self.policy),
+            agent_update=update_remote_agent_device(self.policy),
             env_update=env_updates
         )
 
         episodes = sampler.obtain_exact_episodes(
             n_eps_per_worker=int(skills_per_worker*episodes_per_skill),
-            agent_update=agent_update(self.policy)
+            agent_update=update_remote_agent_device(self.policy)
         )
 
         return episodes

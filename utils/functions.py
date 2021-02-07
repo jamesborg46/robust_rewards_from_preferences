@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-import akro
+from collections import OrderedDict
 
 
 def split_flattened(space, values):
@@ -37,3 +37,10 @@ def corrcoef(dist_a, dist_b):
     dist_a[0] += 1e-12
     dist_b[0] += 1e-12
     return np.corrcoef(dist_a, dist_b)[0, 1]
+
+
+def update_remote_agent_device(policy, device='cpu'):
+    state_dict = OrderedDict(
+        [(k, v.to(device)) for k, v in policy.state_dict().items()]
+    )
+    return state_dict
