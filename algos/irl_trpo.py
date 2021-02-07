@@ -1,7 +1,10 @@
 """Learning reward from preferences with TRPO"""
 
 from garage.torch.algos import TRPO
+from garage import EpisodeBatch
 from dowel import tabular
+import numpy as np
+from utils import corrcoef
 
 
 class IrlTRPO(TRPO):
@@ -27,35 +30,21 @@ class IrlTRPO(TRPO):
         with tabular.prefix('ForwardAlgorithm/'):
             last_return = super()._train_once(itr, paths)
         self._reward_predictor.train_once(itr, paths)
+        self._log_performance(paths)
         return last_return
 
-    # def _log_performance(self, itr, paths):
-    #     returns = []
-    #     undiscounted_returns = []
-    #     termination = []
-    #     success = []
-    #     for eps in batch.split():
-    #         returns.append(discount_cumsum(eps.rewards, discount))
-    #         undiscounted_returns.append(sum(eps.rewards))
-    #         termination.append(
-    #             float(
-    #                 any(step_type == StepType.TERMINAL
-    #                     for step_type in eps.step_types)))
-    #         if 'success' in eps.env_infos:
-    #             success.append(float(eps.env_infos['success'].any()))
+    def _log_performance(self, paths):
+        undiscounted_returns = []
+        corrs = []
+        for eps in EpisodeBatch.from_list(self._env_spec, paths).split():
+            undiscounted_returns.append(sum(eps.env_infos['gt_reward']))
+            corrs.append(corrcoef(eps.rewards, eps.env_infos['gt_reward']))
 
-    #     average_discounted_return = np.mean([rtn[0] for rtn in returns])
-
-    #     with tabular.prefix(prefix + '/'):
-    #         tabular.record('Iteration', itr)
-    #         tabular.record('NumEpisodes', len(returns))
-
-    #         tabular.record('AverageDiscountedReturn', average_discounted_return)
-    #         tabular.record('AverageReturn', np.mean(undiscounted_returns))
-    #         tabular.record('StdReturn', np.std(undiscounted_returns))
-    #         tabular.record('MaxReturn', np.max(undiscounted_returns))
-    #         tabular.record('MinReturn', np.min(undiscounted_returns))
-    #         tabular.record('TerminationRate', np.mean(termination))
-    #         if success:
-    #             tabular.record('SuccessRate', np.mean(success))
+        with tabular.prefix('RewardPredictor/'):
+            tabular.record('AverageGTReturn', np.mean(undiscounted_returns))
+            tabular.record('StdGTReturn', np.std(undiscounted_returns))
+            tabular.record('MaxGTReturn', np.max(undiscounted_returns))
+            tabular.record('MinGTReturn', np.min(undiscounted_returns))
+            tabular.record('AverageEpisodeRewardCorrelation',
+                           np.mean(corrs))
 
