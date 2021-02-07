@@ -28,6 +28,8 @@ import os
 import argparse
 import json
 import pickle
+import dowel
+from dowel import logger
 
 
 def robust_preferences(ctxt,
@@ -118,6 +120,14 @@ if __name__ == '__main__':
 
     log_dir = os.path.join(experiment_dir,
                            kwargs['name'] + time.ctime().replace(' ', '_'))
+
+    logger.add_output(
+        dowel.WandbOutput(
+            project='robust_rewards',
+            name=args['name'],
+            config=kwargs,
+        )
+    )
 
     robust_preferences = wrap_experiment(
         robust_preferences,
