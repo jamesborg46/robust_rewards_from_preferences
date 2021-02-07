@@ -79,7 +79,10 @@ def robust_preferences(ctxt,
         n_workers=kwargs['n_workers'],
     )
 
+    eval_env = trainer.get_env_copy()
+
     trainer.eval_sampler_setup(
+        eval_env=eval_env,
         sampler_cls=sampler,
         n_workers=kwargs['n_workers'],
         worker_class=DefaultWorker,
