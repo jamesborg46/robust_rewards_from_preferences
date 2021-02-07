@@ -1,6 +1,7 @@
 """Learning reward from preferences with TRPO"""
 
 from garage.torch.algos import TRPO
+from dowel import tabular
 
 
 class IrlTRPO(TRPO):
@@ -23,6 +24,7 @@ class IrlTRPO(TRPO):
 
     def _train_once(self, itr, paths):
         self._reward_predictor.predict_rewards(itr, paths)
-        last_return = super()._train_once(itr, paths)
+        with tabular.prefix('ForwardAlgorithm/'):
+            last_return = super()._train_once(itr, paths)
         self._reward_predictor.train_once(itr, paths)
         return last_return

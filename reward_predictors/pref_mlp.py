@@ -154,21 +154,17 @@ class PrefMLP(nn.Module, RewardPredictor):
 
     def predict_rewards(self, itr, paths):
         obs_space = self.env_spec.observation_space
-        with torch.no_grad():
-            obs = torch.tensor(
-                [obs_space.flatten_n(path['observations'])
-                 for path in paths]
-            ).type(torch.float32)
+        lengths = np.array([len(path['observations']) for path in paths])
 
-            predicted_rewards = (
-                self.forward(obs).numpy()
-            )
+        with torch.no_grad():
+            obs = np_to_torch(np.concatenate(
+                [obs_space.flatten_n(path['observations']) for path in paths]))
+
+            predicted_rewards = self.forward(obs).numpy()
 
         predicted_rewards = self._scale_rewards(predicted_rewards)
-        assert predicted_rewards.ndim == 3
-        num_paths, timesteps, obs_dim = predicted_rewards.shape
-        assert num_paths == len(paths)
-        assert timesteps == len(paths[0]['observations'])
+        predicted_rewards = np.split(predicted_rewards, np.cumsum(lengths)[:-1])
+        assert len(predicted_rewards) == len(paths)
 
         for path, predicted_reward in zip(paths, predicted_rewards):
             assert len(path['rewards']) == len(predicted_reward)
