@@ -2,6 +2,7 @@
 
 from dowel import tabular
 from garage.sampler.env_update import EnvUpdate
+from garage.torch import set_gpu_mode, global_device
 from garage.torch.algos import TRPO
 from garage import EpisodeBatch
 import numpy as np
@@ -10,7 +11,6 @@ import os.path as osp
 import pickle
 from utils import corrcoef, update_remote_agent_device
 import wandb
-from dowel import logger
 
 
 class EnvConfigUpdate(EnvUpdate):
@@ -42,11 +42,12 @@ class IrlTRPO(TRPO):
     def __init__(self,
                  env_spec,
                  reward_predictor,
-                 render_freq=2,
+                 render_freq=200,
                  **kwargs,
                  ):
 
-        super().__init__(env_spec=env_spec, **kwargs)
+        super().__init__(env_spec=env_spec,
+                         **kwargs)
         self._env_spec = env_spec
         self._reward_predictor = reward_predictor
         self._render_freq = render_freq
@@ -140,3 +141,28 @@ class IrlTRPO(TRPO):
                 wandb.log({
                     os.path.basename(video_file): wandb.Video(video_file)
                 })
+
+    @property
+    def networks(self):
+        """Return all the networks within the model.
+
+        Returns:
+            list: A list of networks.
+
+        """
+        return [
+            self.policy, self._value_function, self._reward_predictor,
+        ]
+
+    def to(self, device=None):
+        """Put all the networks within the model on device.
+
+        Args:
+            device (str): ID of GPU or CPU.
+
+        """
+        if device is None:
+            device = global_device()
+        for net in self.networks:
+            net.to(device)
+

@@ -48,6 +48,8 @@ class PrefMLP(nn.Module, RewardPredictor):
                  env_spec,
                  preference_collector,
                  learning_rate=0.001,
+                 minibatch_size=256,
+                 max_optimization_epochs=100,
                  pretrain_epochs=1000,
                  hidden_sizes=(32, 32),
                  hidden_nonlinearity=torch.tanh,
@@ -84,8 +86,8 @@ class PrefMLP(nn.Module, RewardPredictor):
         self.optimizer = OptimizerWrapper(
             (torch.optim.Adam, dict(lr=learning_rate)),
             self.module,
-            max_optimization_epochs=1,
-            minibatch_size=256,
+            max_optimization_epochs=max_optimization_epochs,
+            minibatch_size=minibatch_size,
         )
 
     def predict_preferences(self, left, right):
@@ -95,8 +97,10 @@ class PrefMLP(nn.Module, RewardPredictor):
         batch, timesteps, obs_dim = left.shape
         assert timesteps == 1  # 1 Time step per segment
 
+        breakpoint()
         left = left.reshape(batch, obs_dim)
         right = right.reshape(batch, obs_dim)
+        breakpoint()
 
         left_out = self.module(left)
         right_out = self.module(right)

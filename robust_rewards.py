@@ -13,7 +13,7 @@ from garage.torch.policies import GaussianMLPPolicy  # noqa: F401
 from garage.torch.value_functions import GaussianMLPValueFunction  # noqa: F401
 from garage.sampler import LocalSampler, RaySampler, DefaultWorker
 from garage.trainer import Trainer
-
+from garage.torch.optimizers import OptimizerWrapper  # noqa: F401
 import gym
 import safety_gym  # noqa: F401
 import envs.custom_safety_envs  # noqa: F401
@@ -60,6 +60,7 @@ def robust_preferences(ctxt,
     trainer = Trainer(ctxt)
     policy = eval(kwargs['policy'])  # noqa: F841
     value_function = eval(kwargs['value_function'])  # noqa: F841
+    vf_optimizer = eval( kwargs['vf_optimizer'])  # noqa: F841
     label_scheduler = eval(kwargs['label_scheduler'])  # noqa: F841
     data_collector = eval(kwargs['data_collector'])  # noqa: F841
     reward_predictor = eval(kwargs['reward_predictor'])  # noqa: F841
@@ -88,8 +89,10 @@ def robust_preferences(ctxt,
         worker_class=DefaultWorker,
     )
 
+    algo.to()
     trainer.train(n_epochs=kwargs['number_epochs'],
                   batch_size=kwargs['steps_per_epoch'])
+
 
 
 if __name__ == '__main__':
@@ -109,6 +112,7 @@ if __name__ == '__main__':
     # These arguments will be evaluated as code
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--value_function', type=str, required=True)
+    parser.add_argument('--vf_optimizer', type=str, required=True)
     parser.add_argument('--label_scheduler', type=str, required=True)
     parser.add_argument('--data_collector', type=str, required=True)
     parser.add_argument('--reward_predictor', type=str, required=True)
