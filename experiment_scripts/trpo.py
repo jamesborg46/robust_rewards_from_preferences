@@ -9,9 +9,10 @@ from garage import wrap_experiment
 from garage.envs import GymEnv
 from garage.experiment.deterministic import set_seed
 from garage.torch import set_gpu_mode
+from garage.torch.algos import TRPO  # noqa: F401
 from garage.torch.policies import GaussianMLPPolicy  # noqa: F401
 from garage.torch.value_functions import GaussianMLPValueFunction  # noqa: F401
-from garage.sampler import LocalSampler, RaySampler, DefaultWorker
+from garage.sampler import LocalSampler, RaySampler 
 from garage.trainer import Trainer
 from garage.torch.optimizers import OptimizerWrapper  # noqa: F401
 import gym
@@ -19,10 +20,7 @@ import safety_gym  # noqa: F401
 import envs.custom_safety_envs  # noqa: F401
 import gym_sokoban  # noqa: F401
 from safety_gym.envs.engine import Engine
-from wrappers import RewardMasker, SafetyEnvStateAppender, Renderer
-from algos import IrlTRPO  # noqa: F401
-from buffers import SyntheticPreferenceCollector, LabelAnnealer  # noqa: F401
-from reward_predictors import PrefMLP  # noqa: F401
+from wrappers import SafetyEnvStateAppender, Renderer
 
 import time
 import os
@@ -33,9 +31,9 @@ import dowel
 from dowel import logger
 
 
-def robust_preferences(ctxt,
-                       **kwargs,
-                       ):
+def trpo(ctxt,
+         **kwargs,
+         ):
 
     kwargs['number_epochs'] += 1
 
@@ -50,7 +48,6 @@ def robust_preferences(ctxt,
             json.dump(config, outfile)
 
     env.metadata['render.modes'] = ['rgb_array']
-    env = RewardMasker(env)
     env = SafetyEnvStateAppender(env)
     env = Renderer(env, directory=os.path.join(ctxt.snapshot_dir, 'videos'))
     env = GymEnv(env, max_episode_length=kwargs['max_episode_length'])
@@ -61,10 +58,7 @@ def robust_preferences(ctxt,
     trainer = Trainer(ctxt)
     policy = eval(kwargs['policy'])  # noqa: F841
     value_function = eval(kwargs['value_function'])  # noqa: F841
-    vf_optimizer = eval( kwargs['vf_optimizer'])  # noqa: F841
-    label_scheduler = eval(kwargs['label_scheduler'])  # noqa: F841
-    data_collector = eval(kwargs['data_collector'])  # noqa: F841
-    reward_predictor = eval(kwargs['reward_predictor'])  # noqa: F841
+    vf_optimizer = eval(kwargs['vf_optimizer'])  # noqa: F841
     algo = eval(kwargs['algo'])
 
     if torch.cuda.is_available() and kwargs['use_gpu']:
@@ -81,16 +75,6 @@ def robust_preferences(ctxt,
         n_workers=kwargs['n_workers'],
     )
 
-    eval_env = trainer.get_env_copy()
-
-    trainer.eval_sampler_setup(
-        eval_env=eval_env,
-        sampler_cls=sampler,
-        n_workers=kwargs['n_workers'],
-        worker_class=DefaultWorker,
-    )
-
-    algo.to()
     trainer.train(n_epochs=kwargs['number_epochs'],
                   batch_size=kwargs['steps_per_epoch'])
 
@@ -114,9 +98,6 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--value_function', type=str, required=True)
     parser.add_argument('--vf_optimizer', type=str, required=True)
-    parser.add_argument('--label_scheduler', type=str, required=True)
-    parser.add_argument('--data_collector', type=str, required=True)
-    parser.add_argument('--reward_predictor', type=str, required=True)
     parser.add_argument('--algo', type=str, required=True)
 
     torch.set_num_threads(4)
@@ -136,17 +117,17 @@ if __name__ == '__main__':
 
     logger.add_output(
         dowel.WandbOutput(
-            project='robust_rewards',
+            project='trpo',
             name=args['name'],
             config=kwargs,
         )
     )
 
-    robust_preferences = wrap_experiment(
-        robust_preferences,
+    trpo = wrap_experiment(
+        trpo,
         name=kwargs['name'],
         snapshot_gap=kwargs['snapshot_gap'],
         snapshot_mode='gapped_last',
         log_dir=log_dir,
     )
-    robust_preferences(**kwargs)
+    trpo(**kwargs)

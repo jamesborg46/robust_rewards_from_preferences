@@ -1,7 +1,7 @@
 python robust_rewards.py \
     --seed 6 \
     --name TEST_IRL_INITIAL_EXP_$1 \
-    --env_id Safexp-PointIRLGoalThree-v0 \
+    --env_id 'Sokoban-v0' \
     --number_epochs 1000 \
     --snapshot_gap 200 \
     --steps_per_epoch 8000 \
@@ -37,6 +37,4 @@ python robust_rewards.py \
                     policy=policy,
                     value_function=value_function,
                     vf_optimizer=vf_optimizer,
-                    render_freq=100)" \
-    --ray
-    
+                    render_freq=100)"
