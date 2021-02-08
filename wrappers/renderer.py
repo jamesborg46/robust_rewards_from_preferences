@@ -3,6 +3,8 @@ import gym
 import os
 from collections import defaultdict
 from gym.wrappers.monitoring import video_recorder
+import wandb
+from dowel import logger
 
 
 class Renderer(gym.Wrapper):
@@ -10,13 +12,14 @@ class Renderer(gym.Wrapper):
         super().__init__(env)
 
         self.video_enabled = False
-        self.directory = directory
+        self._video_directory = directory
+        self._video_filename = None
         self.video_recorder = None
         self.names = defaultdict(int)
         self.file_prefix = ""
 
-        if not os.path.isdir(self.directory):
-            os.makedirs(self.directory)
+        if not os.path.isdir(self._video_directory):
+            os.makedirs(self._video_directory)
 
     def enable_rendering(self, rendering_enabled, file_prefix=""):
         self.video_enabled = rendering_enabled
@@ -31,6 +34,17 @@ class Renderer(gym.Wrapper):
         if self.video_enabled:
             self.video_recorder.capture_frame()
 
+        # Sets filename on the first step then must continue to attach Nones
+        # to get a full batch of entries, Otherwise the garage EpisodeBatch
+        # data-structure would complain
+        info['video_filename'] = None
+        if self._video_filename is not None:
+            info['video_filename'] = os.path.join(
+                self._video_directory,
+                self._video_filename + '.mp4'
+            )
+            self._video_filename = None
+
         return obs, reward, done, info
 
     def reset(self, **kwargs):
@@ -39,10 +53,13 @@ class Renderer(gym.Wrapper):
             self.reset_video_recorder()
         return observation
 
-    def close(self):
-        super().close()
+    def close_renderer(self):
         if self.video_recorder:
             self.video_recorder.close()
+
+    def close(self):
+        super().close()
+        self.close_renderer()
 
     def __del__(self):
         self.close()
@@ -59,17 +76,16 @@ class Renderer(gym.Wrapper):
         self.names[name] += 1
 
         ep_id = self.names[name]
-        filename = name + f"id_{ep_id:002}"
+        self._video_filename = name + f"id_{ep_id:002}"
 
         # Start recording the next video.
         self.video_recorder = video_recorder.VideoRecorder(
             env=self.env,
             base_path=os.path.join(
-                self.directory,
-                filename
+                self._video_directory,
+                self._video_filename,
             ),
             metadata=self.metadata,
             enabled=self.video_enabled,
         )
         self.video_recorder.capture_frame()
-

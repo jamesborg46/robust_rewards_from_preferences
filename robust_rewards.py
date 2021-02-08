@@ -102,7 +102,7 @@ if __name__ == '__main__':
     parser.add_argument('--snapshot_gap', type=int, default=100)
     parser.add_argument('--max_episode_length', type=int, default=1000)
     parser.add_argument('--n_workers', type=int, default=8)
-    parser.add_argument('--ray', action='store_true', default=True)
+    parser.add_argument('--ray', action='store_true', default=False)
     parser.add_argument('--use_gpu', action='store_true', default=False)
     parser.add_argument('--gpu_id', type=int, default=0)
 

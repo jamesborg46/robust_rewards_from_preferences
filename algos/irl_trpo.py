@@ -9,6 +9,8 @@ import os
 import os.path as osp
 import pickle
 from utils import corrcoef, update_remote_agent_device
+import wandb
+from dowel import logger
 
 
 class EnvConfigUpdate(EnvUpdate):
@@ -27,6 +29,12 @@ class EnvConfigUpdate(EnvUpdate):
         old_env.enable_rendering(self.enable_render,
                                  file_prefix=self.file_prefix)
         return old_env
+
+
+class CloseRenderer(EnvUpdate):
+
+    def __call__(self, old_env):
+        old_env.close_renderer()
 
 
 class IrlTRPO(TRPO):
@@ -107,6 +115,13 @@ class IrlTRPO(TRPO):
             agent_update=update_remote_agent_device(self.policy)
         )
 
+        env_updates = [CloseRenderer() for _ in range(trainer._eval_n_workers)]
+
+        trainer._eval_sampler._update_workers(
+            env_update=env_updates,
+            agent_update=update_remote_agent_device(self.policy)
+        )
+
         if capture_state:
             fname = osp.join(trainer._snapshotter.snapshot_dir,
                              'episode_logs',
@@ -118,3 +133,10 @@ class IrlTRPO(TRPO):
             with open(fname, 'wb') as f:
                 pickle.dump(episodes, f)
 
+        if enable_render:
+            for episode in episodes.split():
+                video_file = episode.env_infos['video_filename'][0]
+                assert '.mp4' in video_file
+                wandb.log({
+                    os.path.basename(video_file): wandb.Video(video_file)
+                })
