@@ -97,10 +97,8 @@ class PrefMLP(nn.Module, RewardPredictor):
         batch, timesteps, obs_dim = left.shape
         assert timesteps == 1  # 1 Time step per segment
 
-        breakpoint()
         left = left.reshape(batch, obs_dim)
         right = right.reshape(batch, obs_dim)
-        breakpoint()
 
         left_out = self.module(left)
         right_out = self.module(right)

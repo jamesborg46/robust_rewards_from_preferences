@@ -36,7 +36,5 @@ python robust_rewards.py \
                     value_function=value_function,
                     vf_optimizer=vf_optimizer,
                     render_freq=2)" \
-    --ray \
-    --use_gpu \
-    --gpu_id $1
+    --ray
     
