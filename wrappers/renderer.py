@@ -3,8 +3,6 @@ import gym
 import os
 from collections import defaultdict
 from gym.wrappers.monitoring import video_recorder
-import wandb
-from dowel import logger
 
 
 class Renderer(gym.Wrapper):

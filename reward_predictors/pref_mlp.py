@@ -49,8 +49,8 @@ class PrefMLP(nn.Module, RewardPredictor):
                  preference_collector,
                  learning_rate=0.001,
                  minibatch_size=256,
-                 max_optimization_epochs=100,
-                 pretrain_epochs=1000,
+                 iterations_per_epoch=100,
+                 pretrain_epochs=10,
                  hidden_sizes=(32, 32),
                  hidden_nonlinearity=torch.tanh,
                  hidden_w_init=nn.init.xavier_uniform_,
@@ -86,7 +86,7 @@ class PrefMLP(nn.Module, RewardPredictor):
         self.optimizer = OptimizerWrapper(
             (torch.optim.Adam, dict(lr=learning_rate)),
             self.module,
-            max_optimization_epochs=max_optimization_epochs,
+            max_optimization_epochs=iterations_per_epoch,
             minibatch_size=minibatch_size,
         )
 

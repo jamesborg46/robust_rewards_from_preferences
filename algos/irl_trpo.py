@@ -35,6 +35,7 @@ class CloseRenderer(EnvUpdate):
 
     def __call__(self, old_env):
         old_env.close_renderer()
+        return old_env
 
 
 class IrlTRPO(TRPO):
@@ -139,8 +140,8 @@ class IrlTRPO(TRPO):
                 video_file = episode.env_infos['video_filename'][0]
                 assert '.mp4' in video_file
                 wandb.log({
-                    os.path.basename(video_file): wandb.Video(video_file)
-                })
+                    os.path.basename(video_file): wandb.Video(video_file),
+                }, step=trainer.step_itr)
 
     @property
     def networks(self):
