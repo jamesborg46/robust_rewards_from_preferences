@@ -1,12 +1,12 @@
 python trpo.py \
-    --seed 6 \
-    --name TEST_TRPO_$1 \
+    --seed $1 \
+    --name TRPO_INITIAL_EXP_$1 \
     --env_id 'Safexp-PointIRLGoalThree-v0' \
     --number_epochs 1000 \
     --snapshot_gap 200 \
-    --steps_per_epoch 2000 \
+    --steps_per_epoch 8000 \
     --max_episode_length 1000 \
-    --n_workers 2 \
+    --n_workers 8 \
     --policy "GaussianMLPPolicy(env.spec,
                                 hidden_sizes=[32, 32],
                                 hidden_nonlinearity=torch.tanh,
@@ -19,7 +19,7 @@ python trpo.py \
                                      value_function,
                                      max_optimization_epochs=20,
                                      minibatch_size=64)" \
-    --algo "TRPOWithVideos(render_freq=2,
+    --algo "TRPOWithVideos(render_freq=100,
                            env_spec=env.spec,
                            policy=policy,
                            value_function=value_function,
