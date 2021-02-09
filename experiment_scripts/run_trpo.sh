@@ -19,7 +19,9 @@ python trpo.py \
                                      value_function,
                                      max_optimization_epochs=20,
                                      minibatch_size=64)" \
-    --algo "TRPO(env.spec,
-                 policy=policy,
-                 value_function=value_function,
-                 vf_optimizer=vf_optimizer,)"
+    --algo "TRPOWithVideos(render_freq=2,
+                           env_spec=env.spec,
+                           policy=policy,
+                           value_function=value_function,
+                           vf_optimizer=vf_optimizer,)" \
+    --ray

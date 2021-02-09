@@ -60,7 +60,7 @@ def robust_preferences(ctxt,
     trainer = Trainer(ctxt)
     policy = eval(kwargs['policy'])  # noqa: F841
     value_function = eval(kwargs['value_function'])  # noqa: F841
-    vf_optimizer = eval( kwargs['vf_optimizer'])  # noqa: F841
+    vf_optimizer = eval(kwargs['vf_optimizer'])  # noqa: F841
     label_scheduler = eval(kwargs['label_scheduler'])  # noqa: F841
     data_collector = eval(kwargs['data_collector'])  # noqa: F841
     reward_predictor = eval(kwargs['reward_predictor'])  # noqa: F841
@@ -91,7 +91,6 @@ def robust_preferences(ctxt,
 
     trainer.train(n_epochs=kwargs['number_epochs'],
                   batch_size=kwargs['steps_per_epoch'])
-
 
 
 if __name__ == '__main__':

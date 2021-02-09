@@ -12,15 +12,15 @@ from garage.torch import set_gpu_mode
 from garage.torch.algos import TRPO  # noqa: F401
 from garage.torch.policies import GaussianMLPPolicy  # noqa: F401
 from garage.torch.value_functions import GaussianMLPValueFunction  # noqa: F401
-from garage.sampler import LocalSampler, RaySampler 
+from garage.sampler import LocalSampler, RaySampler, DefaultWorker
 from garage.trainer import Trainer
 from garage.torch.optimizers import OptimizerWrapper  # noqa: F401
 import gym
 import safety_gym  # noqa: F401
 import envs.custom_safety_envs  # noqa: F401
-import gym_sokoban  # noqa: F401
 from safety_gym.envs.engine import Engine
 from wrappers import SafetyEnvStateAppender, Renderer
+from utils import log_episodes
 
 import time
 import os
@@ -29,6 +29,41 @@ import json
 import pickle
 import dowel
 from dowel import logger
+
+
+class TRPOWithVideos(TRPO):
+
+    def __init__(self,
+                 render_freq=200,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self._render_freq = render_freq
+
+    def train(self, trainer):
+        """Obtain samplers and start actual training for each epoch.
+
+        Args:
+            trainer (Trainer): Gives the algorithm the access to
+                :method:`~Trainer.step_epochs()`, which provides services
+                such as snapshotting and sampler control.
+
+        Returns:
+            float: The average return in last epoch cycle.
+
+        """
+        last_return = None
+
+        for epoch in trainer.step_epochs():
+            for _ in range(self._n_samples):
+                trainer.step_path = trainer.obtain_samples(trainer.step_itr)
+                last_return = self._train_once(trainer.step_itr,
+                                               trainer.step_path)
+                trainer.step_itr += 1
+
+            if epoch and epoch % self._render_freq == 0:
+                log_episodes(trainer, self.policy, enable_render=True)
+
+        return last_return
 
 
 def trpo(ctxt,
@@ -73,6 +108,15 @@ def trpo(ctxt,
         env=env,
         sampler_cls=sampler,
         n_workers=kwargs['n_workers'],
+    )
+
+    eval_env = trainer.get_env_copy()
+
+    trainer.eval_sampler_setup(
+        eval_env=eval_env,
+        sampler_cls=sampler,
+        n_workers=kwargs['n_workers'],
+        worker_class=DefaultWorker,
     )
 
     trainer.train(n_epochs=kwargs['number_epochs'],
