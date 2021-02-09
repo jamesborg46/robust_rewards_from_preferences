@@ -79,7 +79,6 @@ def trpo(ctxt,
                   batch_size=kwargs['steps_per_epoch'])
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='preference reward learning')
     parser.add_argument('--seed', type=int, required=False)

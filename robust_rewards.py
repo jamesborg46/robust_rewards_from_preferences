@@ -17,7 +17,6 @@ from garage.torch.optimizers import OptimizerWrapper  # noqa: F401
 import gym
 import safety_gym  # noqa: F401
 import envs.custom_safety_envs  # noqa: F401
-import gym_sokoban  # noqa: F401
 from safety_gym.envs.engine import Engine
 from wrappers import RewardMasker, SafetyEnvStateAppender, Renderer
 from algos import IrlTRPO  # noqa: F401
@@ -90,7 +89,6 @@ def robust_preferences(ctxt,
         worker_class=DefaultWorker,
     )
 
-    algo.to()
     trainer.train(n_epochs=kwargs['number_epochs'],
                   batch_size=kwargs['steps_per_epoch'])
 
