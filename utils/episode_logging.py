@@ -4,6 +4,7 @@ import os
 import os.path as osp
 import pickle
 import wandb
+import ray
 
 
 class EnvConfigUpdate(EnvUpdate):
@@ -31,41 +32,47 @@ class CloseRenderer(EnvUpdate):
         return old_env
 
 
-def log_episodes(trainer,
+def log_episodes(itr,
+                 snapshot_dir,
+                 sampler,
                  policy,
                  n_eps_per_worker=1,
                  capture_state=True,
                  enable_render=False):
 
+    n_workers = sampler._worker_factory.n_workers
     env_updates = []
-    for i in range(trainer._eval_n_workers):
+    for i in range(n_workers):
         env_updates.append(EnvConfigUpdate(
             capture_state=capture_state,
             enable_render=enable_render,
-            file_prefix=f"epoch_{trainer.step_itr:04}_worker_{i:02}_"
+            file_prefix=f"epoch_{itr:04}_worker_{i:02}_"
         ))
 
-    trainer._eval_sampler._update_workers(
+    sampler._update_workers(
         env_update=env_updates,
         agent_update=update_remote_agent_device(policy)
     )
 
-    episodes = trainer._eval_sampler.obtain_exact_episodes(
+    episodes = sampler.obtain_exact_episodes(
         n_eps_per_worker=n_eps_per_worker,
         agent_update=update_remote_agent_device(policy)
     )
 
-    env_updates = [CloseRenderer() for _ in range(trainer._eval_n_workers)]
+    env_updates = [CloseRenderer() for _ in range(n_workers)]
 
-    trainer._eval_sampler._update_workers(
+    updates = sampler._update_workers(
         env_update=env_updates,
         agent_update=update_remote_agent_device(policy)
     )
 
+    while updates:
+        ready, updates = ray.wait(updates)
+
     if capture_state:
-        fname = osp.join(trainer._snapshotter.snapshot_dir,
+        fname = osp.join(snapshot_dir,
                          'episode_logs',
-                         f'episode_{trainer.step_itr}.pkl')
+                         f'episode_{itr}.pkl')
 
         if not osp.isdir(osp.dirname(fname)):
             os.makedirs(osp.dirname(fname))
@@ -79,4 +86,4 @@ def log_episodes(trainer,
             assert '.mp4' in video_file
             wandb.log({
                 os.path.basename(video_file): wandb.Video(video_file),
-            }, step=trainer.step_itr)
+            }, step=itr)

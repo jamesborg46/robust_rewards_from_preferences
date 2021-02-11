@@ -34,36 +34,24 @@ from dowel import logger
 class TRPOWithVideos(TRPO):
 
     def __init__(self,
+                 snapshot_dir,
+                 log_sampler,
                  render_freq=200,
                  **kwargs):
         super().__init__(**kwargs)
         self._render_freq = render_freq
+        self._snapshot_dir = snapshot_dir
+        self._log_sampler = log_sampler
 
-    def train(self, trainer):
-        """Obtain samplers and start actual training for each epoch.
+    def _train_once(self, itr, eps):
+        super()._train_once(itr, eps)
 
-        Args:
-            trainer (Trainer): Gives the algorithm the access to
-                :method:`~Trainer.step_epochs()`, which provides services
-                such as snapshotting and sampler control.
-
-        Returns:
-            float: The average return in last epoch cycle.
-
-        """
-        last_return = None
-
-        for epoch in trainer.step_epochs():
-            for _ in range(self._n_samples):
-                trainer.step_path = trainer.obtain_samples(trainer.step_itr)
-                last_return = self._train_once(trainer.step_itr,
-                                               trainer.step_path)
-                trainer.step_itr += 1
-
-            if epoch and epoch % self._render_freq == 0:
-                log_episodes(trainer, self.policy, enable_render=True)
-
-        return last_return
+        if itr and itr % self._render_freq == 0:
+            log_episodes(itr,
+                         self._snapshot_dir,
+                         self._log_sampler,
+                         self.policy,
+                         enable_render=True)
 
 
 def trpo(ctxt,
@@ -71,6 +59,7 @@ def trpo(ctxt,
          ):
 
     kwargs['number_epochs'] += 1
+    snapshot_dir = ctxt.snapshot_dir
 
     set_seed(kwargs['seed'])
     env = gym.make(kwargs['env_id'])
@@ -78,22 +67,34 @@ def trpo(ctxt,
     if isinstance(env, Engine):
         config = env.config
 
-        with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') \
+        with open(os.path.join(snapshot_dir, 'config.json'), 'w') \
                 as outfile:
             json.dump(config, outfile)
 
     env.metadata['render.modes'] = ['rgb_array']
     env = SafetyEnvStateAppender(env)
-    env = Renderer(env, directory=os.path.join(ctxt.snapshot_dir, 'videos'))
+    env = Renderer(env, directory=os.path.join(snapshot_dir, 'videos'))
     env = GymEnv(env, max_episode_length=kwargs['max_episode_length'])
 
-    with open(os.path.join(ctxt.snapshot_dir, 'env.pkl'), 'wb') as outfile:
+    with open(os.path.join(snapshot_dir, 'env.pkl'), 'wb') as outfile:
         pickle.dump(env, outfile)
 
     trainer = Trainer(ctxt)
     policy = eval(kwargs['policy'])  # noqa: F841
     value_function = eval(kwargs['value_function'])  # noqa: F841
     vf_optimizer = eval(kwargs['vf_optimizer'])  # noqa: F841
+
+    Sampler = RaySampler if kwargs['ray'] else LocalSampler
+    sampler = Sampler(agents=policy,  # noqa: F841
+                      envs=env,
+                      max_episode_length=kwargs['max_episode_length'],
+                      n_workers=kwargs['n_workers'])
+
+    log_sampler = Sampler(agents=policy,  # noqa: F841
+                          envs=env,
+                          max_episode_length=kwargs['max_episode_length'],
+                          n_workers=kwargs['n_workers'])
+
     algo = eval(kwargs['algo'])
 
     if torch.cuda.is_available() and kwargs['use_gpu']:
@@ -101,22 +102,9 @@ def trpo(ctxt,
     else:
         set_gpu_mode(False)
 
-    sampler = RaySampler if kwargs['ray'] else LocalSampler
-
     trainer.setup(
         algo=algo,
         env=env,
-        sampler_cls=sampler,
-        n_workers=kwargs['n_workers'],
-    )
-
-    eval_env = trainer.get_env_copy()
-
-    trainer.eval_sampler_setup(
-        eval_env=eval_env,
-        sampler_cls=sampler,
-        n_workers=kwargs['n_workers'],
-        worker_class=DefaultWorker,
     )
 
     trainer.train(n_epochs=kwargs['number_epochs'],
@@ -170,7 +158,7 @@ if __name__ == '__main__':
         trpo,
         name=kwargs['name'],
         snapshot_gap=kwargs['snapshot_gap'],
-        snapshot_mode='gapped_last',
+        snapshot_mode='gap_overwrite',
         log_dir=log_dir,
     )
     trpo(**kwargs)
