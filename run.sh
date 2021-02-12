@@ -1,6 +1,6 @@
 python robust_rewards.py \
     --seed 6 \
-    --name TEST_IRL_$1 \
+    --name NEW_IRL_$1 \
     --env_id 'Safexp-PointIRLGoalThree-v0' \
     --number_epochs 1000 \
     --snapshot_gap 200 \
@@ -40,5 +40,7 @@ python robust_rewards.py \
                     policy=policy,
                     value_function=value_function,
                     vf_optimizer=vf_optimizer,
-                    render_freq=2)" \
+                    render_freq=2,
+                    discount=1,
+                    gae_lambda=1,)" \
     --ray
