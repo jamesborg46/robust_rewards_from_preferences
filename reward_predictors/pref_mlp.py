@@ -2,8 +2,8 @@
 import torch
 from torch import nn
 from dowel import logger
-import numpy as np
 
+from garage import EpisodeBatch
 from garage.torch import np_to_torch
 from garage.torch.modules import MLPModule
 from garage.torch.optimizers import OptimizerWrapper
@@ -113,8 +113,8 @@ class PrefMLP(nn.Module, RewardPredictor):
         # Acquiring trajectories
         logger.log('Acquiring pre-train episodes')
         while not self.preference_collector.buffer_full:
-            paths = trainer.obtain_samples(itr=0)
-            self.preference_collector.collect(paths)
+            eps = trainer.obtain_episodes(itr=0)
+            self.preference_collector.collect(eps)
 
         # Acquiring comparisons
         logger.log('Acquiring pretrain comparisons')
@@ -144,9 +144,9 @@ class PrefMLP(nn.Module, RewardPredictor):
             loss.backward()
             self.optimizer.step()
 
-    def train_once(self, itr, paths):
+    def train_once(self, itr, eps):
         self._train_once()
-        self.preference_collector.collect(paths)
+        self.preference_collector.collect(eps)
 
     def _scale_rewards(self, rewards):
         scaled_rewards = (
@@ -154,25 +154,30 @@ class PrefMLP(nn.Module, RewardPredictor):
         )
         return scaled_rewards
 
-    def predict_rewards(self, itr, paths):
+    def predict_rewards(self, itr, eps):
         obs_space = self.env_spec.observation_space
-        lengths = np.array([len(path['observations']) for path in paths])
+        # lengths = eps.lengths
+        # split_eps = eps.split()
 
         with torch.no_grad():
-            obs = np_to_torch(np.concatenate(
-                [obs_space.flatten_n(path['observations']) for path in paths]))
-
-            predicted_rewards = self.forward(obs).numpy()
+            obs = np_to_torch(obs_space.flatten_n(eps.observations))
+            predicted_rewards = self.forward(obs).numpy().flatten()
 
         predicted_rewards = self._scale_rewards(predicted_rewards)
-        predicted_rewards = np.split(predicted_rewards, np.cumsum(lengths)[:-1])
-        assert len(predicted_rewards) == len(paths)
+        assert len(predicted_rewards) == len(eps.observations)
 
-        for path, predicted_reward in zip(paths, predicted_rewards):
-            assert len(path['rewards']) == len(predicted_reward)
-            path['rewards'] = predicted_reward.flatten()
+        return EpisodeBatch(env_spec=eps.env_spec,
+                            episode_infos=eps.episode_infos,
+                            observations=eps.observations,
+                            last_observations=eps.last_observations,
+                            actions=eps.actions,
+                            rewards=predicted_rewards,
+                            env_infos=eps.env_infos,
+                            agent_infos=eps.agent_infos,
+                            step_types=eps.step_types,
+                            lengths=eps.lengths)
 
-        return paths
+        # return EpisodeBatch.concatenate(*split_eps)
 
     # pylint: disable=arguments-differ
     def forward(self, obs):

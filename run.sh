@@ -34,6 +34,9 @@ python robust_rewards.py \
                                 minibatch_size=256)" \
     --algo "IrlTRPO(env.spec,
                     reward_predictor=reward_predictor,
+                    snapshot_dir=snapshot_dir,
+                    log_sampler=log_sampler,
+                    sampler=sampler,
                     policy=policy,
                     value_function=value_function,
                     vf_optimizer=vf_optimizer,

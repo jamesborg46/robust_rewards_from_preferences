@@ -13,8 +13,10 @@ class Segment(TimeStepBatch):
 
     @classmethod
     def slice_from_episode(cls, episode, start, end):
+        assert len(episode.lengths) == 1
         sliced = cls(
             env_spec=episode.env_spec,
+            episode_infos=slice_nested_dict(episode.agent_infos, 0, 1),
             observations=episode.observations[start:end],
             actions=episode.actions[start:end],
             rewards=episode.rewards[start:end],
@@ -42,16 +44,15 @@ class PreferenceCollector(abc.ABC):
         self._comparisons = []
         self._segment_length = segment_length
 
-    def collect(self, paths):
+    def collect(self, eps):
         """
 
         Args:
             paths: as returned from EpisodeBatch.to_list()
         """
 
-        episodes = EpisodeBatch.from_list(self.env_spec, paths)
-        self._total_steps += len(episodes.observations)
-        self._extend(episodes)
+        self._total_steps += len(eps.observations)
+        self._extend(eps)
         assert self._total_steps == len(self.episodes.observations)
 
         if self._total_steps > self.max_capacity:
@@ -69,6 +70,7 @@ class PreferenceCollector(abc.ABC):
     def _reduce(self):
         end = len(self.episodes.observations)
         popped_length = 0
+        n = len(self.episodes.lengths)
         i = 0
 
         while self._total_steps - popped_length > self.max_capacity:
@@ -77,6 +79,7 @@ class PreferenceCollector(abc.ABC):
 
         popped = EpisodeBatch(
             env_spec=self.episodes.env_spec,
+            episode_infos=slice_nested_dict(self.episodes.episode_infos, 0, i),  # noqa E:501
             observations=self.episodes.observations[:popped_length],
             last_observations=self.episodes.last_observations[:i],
             actions=self.episodes.actions[:popped_length],
@@ -89,6 +92,7 @@ class PreferenceCollector(abc.ABC):
 
         self.episodes = EpisodeBatch(
             env_spec=self.episodes.env_spec,
+            episode_infos=slice_nested_dict(self.episodes.episode_infos, i, n),  # noqa E:501
             observations=self.episodes.observations[popped_length:],
             last_observations=self.episodes.last_observations[i:],
             actions=self.episodes.actions[popped_length:],

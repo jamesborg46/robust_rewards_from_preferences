@@ -38,23 +38,24 @@ def robust_preferences(ctxt,
 
     kwargs['number_epochs'] += 1
 
+    snapshot_dir = ctxt.snapshot_dir
     set_seed(kwargs['seed'])
     env = gym.make(kwargs['env_id'])
 
     if isinstance(env, Engine):
         config = env.config
 
-        with open(os.path.join(ctxt.snapshot_dir, 'config.json'), 'w') \
+        with open(os.path.join(snapshot_dir, 'config.json'), 'w') \
                 as outfile:
             json.dump(config, outfile)
 
     env.metadata['render.modes'] = ['rgb_array']
     env = RewardMasker(env)
     env = SafetyEnvStateAppender(env)
-    env = Renderer(env, directory=os.path.join(ctxt.snapshot_dir, 'videos'))
+    env = Renderer(env, directory=os.path.join(snapshot_dir, 'videos'))
     env = GymEnv(env, max_episode_length=kwargs['max_episode_length'])
 
-    with open(os.path.join(ctxt.snapshot_dir, 'env.pkl'), 'wb') as outfile:
+    with open(os.path.join(snapshot_dir, 'env.pkl'), 'wb') as outfile:
         pickle.dump(env, outfile)
 
     trainer = Trainer(ctxt)
@@ -64,29 +65,28 @@ def robust_preferences(ctxt,
     label_scheduler = eval(kwargs['label_scheduler'])  # noqa: F841
     data_collector = eval(kwargs['data_collector'])  # noqa: F841
     reward_predictor = eval(kwargs['reward_predictor'])  # noqa: F841
-    algo = eval(kwargs['algo'])
 
     if torch.cuda.is_available() and kwargs['use_gpu']:
         set_gpu_mode(True, gpu_id=kwargs['gpu_id'])
     else:
         set_gpu_mode(False)
 
-    sampler = RaySampler if kwargs['ray'] else LocalSampler
+    Sampler = RaySampler if kwargs['ray'] else LocalSampler
+    sampler = Sampler(agents=policy,  # noqa: F841
+                      envs=env,
+                      max_episode_length=kwargs['max_episode_length'],
+                      n_workers=kwargs['n_workers'])
+
+    log_sampler = Sampler(agents=policy,  # noqa: F841
+                          envs=env,
+                          max_episode_length=kwargs['max_episode_length'],
+                          n_workers=kwargs['n_workers'])
+
+    algo = eval(kwargs['algo'])
 
     trainer.setup(
         algo=algo,
         env=env,
-        sampler_cls=sampler,
-        n_workers=kwargs['n_workers'],
-    )
-
-    eval_env = trainer.get_env_copy()
-
-    trainer.eval_sampler_setup(
-        eval_env=eval_env,
-        sampler_cls=sampler,
-        n_workers=kwargs['n_workers'],
-        worker_class=DefaultWorker,
     )
 
     trainer.train(n_epochs=kwargs['number_epochs'],
@@ -143,7 +143,7 @@ if __name__ == '__main__':
         robust_preferences,
         name=kwargs['name'],
         snapshot_gap=kwargs['snapshot_gap'],
-        snapshot_mode='gapped_last',
+        snapshot_mode='gap_overwrite',
         log_dir=log_dir,
     )
     robust_preferences(**kwargs)

@@ -97,11 +97,6 @@ def trpo(ctxt,
 
     algo = eval(kwargs['algo'])
 
-    if torch.cuda.is_available() and kwargs['use_gpu']:
-        set_gpu_mode(True, gpu_id=kwargs['gpu_id'])
-    else:
-        set_gpu_mode(False)
-
     trainer.setup(
         algo=algo,
         env=env,
