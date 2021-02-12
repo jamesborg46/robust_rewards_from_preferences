@@ -1,12 +1,12 @@
 python robust_rewards.py \
     --seed 6 \
-    --name TEST_IRL_$1 \
+    --name NEW_IRL_$1 \
     --env_id 'Safexp-PointIRLGoalThree-v0' \
     --number_epochs 1000 \
     --snapshot_gap 200 \
-    --steps_per_epoch 2000 \
+    --steps_per_epoch 8000 \
     --max_episode_length 1000 \
-    --n_workers 2 \
+    --n_workers 8 \
     --policy "GaussianMLPPolicy(env.spec,
                                 hidden_sizes=[32, 32],
                                 hidden_nonlinearity=torch.tanh,
@@ -40,5 +40,7 @@ python robust_rewards.py \
                     policy=policy,
                     value_function=value_function,
                     vf_optimizer=vf_optimizer,
-                    render_freq=2)" \
+                    render_freq=250,
+                    discount=1,
+                    gae_lambda=1,)" \
     --ray

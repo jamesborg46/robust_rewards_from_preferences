@@ -66,11 +66,6 @@ def robust_preferences(ctxt,
     data_collector = eval(kwargs['data_collector'])  # noqa: F841
     reward_predictor = eval(kwargs['reward_predictor'])  # noqa: F841
 
-    if torch.cuda.is_available() and kwargs['use_gpu']:
-        set_gpu_mode(True, gpu_id=kwargs['gpu_id'])
-    else:
-        set_gpu_mode(False)
-
     Sampler = RaySampler if kwargs['ray'] else LocalSampler
     sampler = Sampler(agents=policy,  # noqa: F841
                       envs=env,
