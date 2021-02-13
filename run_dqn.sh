@@ -1,11 +1,11 @@
 python dqn.py \
     --seed 6 \
-    --name TEST_DQN_$1 \
-    --env_id 'Pong' \
+    --name INITAL_DQN_$1_$2 \
+    --env_id $2 \
     --number_epochs 1000 \
     --snapshot_gap 200 \
     --steps_per_batch 500 \
-    --steps_per_epoch 2 \
+    --steps_per_epoch 20 \
     --buffer_size 1000000 \
     --n_workers 10 \
     --video_fps 15 \
@@ -29,7 +29,7 @@ python dqn.py \
     --algo "CustomDQN(env_spec=env.spec,
                snapshot_dir=snapshot_dir,
                eval_sampler=eval_sampler,
-               render_freq=1,
+               render_freq=100,
                policy=policy,
                qf=qf,
                exploration_policy=exploration_policy,
@@ -41,10 +41,9 @@ python dqn.py \
                discount=0.99,
                min_buffer_size=1000,
                num_eval_episodes=10,
-               # n_train_steps=125,
-               n_train_steps=2,
+               n_train_steps=125,
                target_update_freq=2,
                buffer_batch_size=32)" \
     --ray \
     --use_gpu \
-    --gpu_id 0
+    --gpu_id $1
