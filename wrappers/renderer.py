@@ -52,8 +52,10 @@ class Renderer(gym.Wrapper):
         return observation
 
     def close_renderer(self):
+        self.video_enabled = False
         if self.video_recorder:
             self.video_recorder.close()
+            self.video_recorder = None
 
     def close(self):
         super().close()

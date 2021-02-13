@@ -61,7 +61,6 @@ def trpo(ctxt,
     kwargs['number_epochs'] += 1
     snapshot_dir = ctxt.snapshot_dir
 
-    set_seed(kwargs['seed'])
     env = gym.make(kwargs['env_id'])
 
     if isinstance(env, Engine):
@@ -75,6 +74,7 @@ def trpo(ctxt,
     env = SafetyEnvStateAppender(env)
     env = Renderer(env, directory=os.path.join(snapshot_dir, 'videos'))
     env = GymEnv(env, max_episode_length=kwargs['max_episode_length'])
+    set_seed(kwargs['seed'])
 
     with open(os.path.join(snapshot_dir, 'env.pkl'), 'wb') as outfile:
         pickle.dump(env, outfile)
