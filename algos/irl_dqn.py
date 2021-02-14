@@ -174,7 +174,9 @@ class IrlDQN(DQN):
                         'Observation.+is outside observation_space.+')
                     timesteps = self.replay_buffer.sample_timesteps(
                         self._buffer_batch_size)
-                timesteps = self._reward_predictor.predict_rewards(timesteps)
+                    timesteps = self._reward_predictor.predict_rewards(
+                        itr,
+                        timesteps)
                 qf_loss, y, q = tuple(v.cpu().numpy()
                                       for v in self._optimize_qf(timesteps))
                 self._times['step'].append(time.time() - _step_start_time)

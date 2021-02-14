@@ -78,8 +78,8 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
     def predict_preferences(self, left, right):
         if not left.shape == right.shape:
             raise ValueError('Left and Right should have same shape')
-        assert left.ndim == 5
-        batch, timesteps, c, h, w = left.shape
+        assert left.ndim == 3
+        batch, timesteps, dim = left.shape
         assert timesteps == 1  # 1 Time step per segment
 
         left = torch.squeeze(left)
@@ -136,6 +136,9 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
     def train_once(self, itr, eps):
         self._train_once()
         self.preference_collector.collect(eps)
+        self.preference_collector.sample_comparisons(itr)
+        self.preference_collector.label_unlabeled_comparisons()
+        self.preference_collector.log_stats(itr)
 
     def _scale_rewards(self, rewards):
         scaled_rewards = (
@@ -144,11 +147,10 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
         return scaled_rewards
 
     def predict_rewards(self, itr, steps):
-        breakpoint()
 
         with torch.no_grad():
             predicted_rewards = self.forward(
-                steps.observations).numpy().flatten()
+                np_to_torch(steps.observations)).numpy().flatten()
 
         predicted_rewards = self._scale_rewards(predicted_rewards)
         assert len(predicted_rewards) == len(steps.observations)

@@ -7,7 +7,7 @@ python irl_dqn.py \
     --steps_per_batch 100 \
     --steps_per_epoch 100 \
     --buffer_size 1000000 \
-    --n_workers 20 \
+    --n_workers 2 \
     --video_fps 15 \
     --qf "DiscreteCNNQFunction(
 			env_spec=env.spec,
@@ -35,7 +35,8 @@ python irl_dqn.py \
                                                    label_scheduler,
                                                    segment_length=1,
                                                    max_capacity=10000,
-                                                   flatten=False)" \
+                                                   # flatten=False,
+                                                   )" \
     --reward_predictor "PrefCNN(env.spec,
                                 preference_collector=data_collector,
                                 hidden_channels=(32, 64, 64),
