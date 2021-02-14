@@ -200,7 +200,7 @@ class IrlDQN(DQN):
             device (str): ID of GPU or CPU.
 
         """
-        super.to()
+        super().to()
         if device is None:
             device = global_device()
         self._reward_predictor = self._reward_predictor.to(device)

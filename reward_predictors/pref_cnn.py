@@ -3,6 +3,8 @@ import torch
 from torch import nn
 from dowel import logger
 
+from utils import update_remote_agent_device
+
 from garage import EpisodeBatch, TimeStepBatch
 from garage.torch import np_to_torch
 from garage.torch.modules import DiscreteCNNModule
@@ -101,7 +103,7 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
         eps = sampler.obtain_samples(
             itr=0,
             num_samples=self.preference_collector.max_capacity,
-            agent_update=agent.get_param_values()
+            agent_update=update_remote_agent_device(agent)
         )
         self.preference_collector.collect(eps)
 
@@ -142,7 +144,7 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
 
     def _scale_rewards(self, rewards):
         scaled_rewards = (
-            -3 + 2*(rewards - rewards.min()) / (rewards.max() - rewards.min())
+            -1 + 2*(rewards - rewards.min()) / (rewards.max() - rewards.min())
         )
         return scaled_rewards
 
@@ -150,7 +152,7 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
 
         with torch.no_grad():
             predicted_rewards = self.forward(
-                np_to_torch(steps.observations)).numpy().flatten()
+                np_to_torch(steps.observations)).cpu().numpy().flatten()
 
         predicted_rewards = self._scale_rewards(predicted_rewards)
         assert len(predicted_rewards) == len(steps.observations)
