@@ -5,81 +5,66 @@ from dowel import logger
 
 from garage import EpisodeBatch, TimeStepBatch
 from garage.torch import np_to_torch
-from garage.torch.modules import MLPModule
+from garage.torch.modules import DiscreteCNNModule
 from garage.torch.optimizers import OptimizerWrapper
 from reward_predictors import RewardPredictor
 
 
-class PrefMLP(nn.Module, RewardPredictor):
-    """Gaussian MLP Value Function with Model.
-    It fits the input data to a gaussian distribution estimated by
-    a MLP.
-    Args:
-        env_spec (EnvSpec): Environment specification.
-        hidden_sizes (list[int]): Output dimension of dense layer(s) for
-            the MLP for mean. For example, (32, 32) means the MLP consists
-            of two hidden layers, each with 32 hidden units.
-        hidden_nonlinearity (callable): Activation function for intermediate
-            dense layer(s). It should return a torch.Tensor. Set it to
-            None to maintain a linear activation.
-        hidden_w_init (callable): Initializer function for the weight
-            of intermediate dense layer(s). The function should return a
-            torch.Tensor.
-        hidden_b_init (callable): Initializer function for the bias
-            of intermediate dense layer(s). The function should return a
-            torch.Tensor.
-        output_nonlinearity (callable): Activation function for output dense
-            layer. It should return a torch.Tensor. Set it to None to
-            maintain a linear activation.
-        output_w_init (callable): Initializer function for the weight
-            of output dense layer(s). The function should return a
-            torch.Tensor.
-        output_b_init (callable): Initializer function for the bias
-            of output dense layer(s). The function should return a
-            torch.Tensor.
-        learn_std (bool): Is std trainable.
-        init_std (float): Initial value for std.
-            (plain value - not log or exponentiated).
-        layer_normalization (bool): Bool for using layer normalization or not.
-        name (str): The name of the value function.
-    """
+class PrefCNN(DiscreteCNNModule, RewardPredictor):
 
     def __init__(self,
                  env_spec,
                  preference_collector,
+                 kernel_sizes,
+                 hidden_channels,
+                 strides,
                  learning_rate=0.001,
                  minibatch_size=256,
                  iterations_per_epoch=100,
                  pretrain_epochs=10,
                  hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
+                 cnn_hidden_nonlinearity=torch.nn.ReLU,
+                 mlp_hidden_nonlinearity=torch.nn.ReLU,
                  hidden_w_init=nn.init.xavier_uniform_,
                  hidden_b_init=nn.init.zeros_,
+                 paddings=0,
+                 padding_mode='zeros',
+                 max_pool=False,
+                 pool_shape=None,
+                 pool_stride=1,
                  output_nonlinearity=None,
                  output_w_init=nn.init.xavier_uniform_,
                  output_b_init=nn.init.zeros_,
                  layer_normalization=False,
-                 name='PrefMLPRewardPredictor'):
-
-        super().__init__()
+                 is_image=True,
+                 name='PrefCNNRewardPredictor'):
 
         self.env_spec = env_spec
-        input_dim = env_spec.observation_space.flat_dim
+        input_shape = (1, ) + env_spec.observation_space.shape
         output_dim = 1
 
         self.name = name
 
-        self.module = MLPModule(
-            input_dim=input_dim,
-            output_dim=output_dim,
-            hidden_sizes=hidden_sizes,
-            hidden_nonlinearity=hidden_nonlinearity,
-            hidden_w_init=hidden_w_init,
-            hidden_b_init=hidden_b_init,
-            output_nonlinearity=output_nonlinearity,
-            output_w_init=output_w_init,
-            output_b_init=output_b_init,
-            layer_normalization=layer_normalization)
+        super().__init__(input_shape=input_shape,
+                         output_dim=output_dim,
+                         kernel_sizes=kernel_sizes,
+                         strides=strides,
+                         hidden_sizes=hidden_sizes,
+                         hidden_channels=hidden_channels,
+                         cnn_hidden_nonlinearity=cnn_hidden_nonlinearity,
+                         mlp_hidden_nonlinearity=mlp_hidden_nonlinearity,
+                         hidden_w_init=hidden_w_init,
+                         hidden_b_init=hidden_b_init,
+                         paddings=paddings,
+                         padding_mode=padding_mode,
+                         max_pool=max_pool,
+                         pool_shape=pool_shape,
+                         pool_stride=pool_stride,
+                         output_nonlinearity=output_nonlinearity,
+                         output_w_init=output_w_init,
+                         output_b_init=output_b_init,
+                         layer_normalization=layer_normalization,
+                         is_image=is_image)
 
         self.pretrain_epochs = pretrain_epochs
         self.preference_collector = preference_collector
@@ -150,9 +135,6 @@ class PrefMLP(nn.Module, RewardPredictor):
     def train_once(self, itr, eps):
         self._train_once()
         self.preference_collector.collect(eps)
-        self.preference_collector.sample_comparisons(itr)
-        self.preference_collector.label_unlabeled_comparisons()
-        self.preference_collector.log_stats(itr)
 
     def _scale_rewards(self, rewards):
         scaled_rewards = (
@@ -164,7 +146,6 @@ class PrefMLP(nn.Module, RewardPredictor):
         obs_space = self.env_spec.observation_space
 
         with torch.no_grad():
-            obs = np_to_torch(obs_space.flatten_n(steps.observations))
             predicted_rewards = self.forward(obs).numpy().flatten()
 
         predicted_rewards = self._scale_rewards(predicted_rewards)
@@ -193,13 +174,19 @@ class PrefMLP(nn.Module, RewardPredictor):
                                  step_types=steps.step_types)
 
     # pylint: disable=arguments-differ
-    def forward(self, obs):
-        r"""Predict value based on paths.
+    def forward(self, observations):
+        """Return Q-value(s).
+
         Args:
-            obs (torch.Tensor): Observation from the environment
-                with shape :math:`(P, O*)`.
+            observations (np.ndarray): observations of shape :math: `(N, O*)`.
+
         Returns:
-            torch.Tensor: Calculated baselines given observations with
-                shape :math:`(P, O*)`.
+            torch.Tensor: Output value
         """
-        return self.module(obs)
+        if observations.shape != self._env_spec.observation_space.shape:
+            # avoid using observation_space.unflatten_n
+            # to support tensors on GPUs
+            obs_shape = ((len(observations), ) +
+                         self._env_spec.observation_space.shape)
+            observations = observations.reshape(obs_shape)
+        return super().forward(observations)

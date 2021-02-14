@@ -3,6 +3,7 @@ from garage import EpisodeBatch, TimeStepBatch
 from garage.np import slice_nested_dict
 import numpy as np
 from utils.video import write_segment_to_video, upload_to_gcs
+from dowel import tabular
 
 
 class Segment(TimeStepBatch):
@@ -173,6 +174,15 @@ class PreferenceCollector(abc.ABC):
     def _get_model_input_from_segment(self, segment):
         obs = self.env_spec.observation_space.flatten_n(segment.observations)
         return obs
+
+    def log_stats(self, itr):
+        with tabular.prefix('PreferenceCollector/'):
+            tabular.record('BufferSize', self._total_steps)
+            tabular.record('NumberComparisons', self.num_comparisons)
+            tabular.record('NumberLabeledComparisons',
+                           len(self.labeled_comparisons))
+            tabular.record('NumberDesiredLabels',
+                           self.label_scheduler.n_desired_labels(itr))
 
     @abc.abstractmethod
     def add_segment_pair(self, left_seg, right_sef):

@@ -9,10 +9,11 @@ from utils import log_episodes, update_remote_agent_device, log_gt_performance
 from dowel import logger, tabular
 import numpy as np
 
+from garage.torch import global_device
 from garage.torch.algos import DQN
 
 
-class CustomDQN(DQN):
+class IrlDQN(DQN):
 
     def __init__(
             self,
@@ -183,3 +184,15 @@ class CustomDQN(DQN):
         if itr and itr % self._target_update_freq == 0:
             self._target_qf = copy.deepcopy(self._qf)
         self._times['copy'].append(time.time() - _copy_time_start)
+
+    def to(self, device=None):
+        """Put all the networks within the model on device.
+
+        Args:
+            device (str): ID of GPU or CPU.
+
+        """
+        super.to()
+        if device is None:
+            device = global_device()
+        self._reward_predictor = self._reward_predictor.to(device)

@@ -35,7 +35,7 @@ class IrlTRPO(TRPO):
             last_return = super()._train_once(itr, eps)
         self._reward_predictor.train_once(itr, eps)
 
-        log_gt_performance(eps)
+        log_gt_performance(itr, eps, self._discount)
         if itr and itr % self._render_freq == 0:
             log_episodes(itr,
                          self._snapshot_dir,
