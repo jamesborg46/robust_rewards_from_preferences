@@ -1,7 +1,7 @@
 python dqn.py \
     --seed 6 \
-    --name INITAL_DQN_$1_$2 \
-    --env_id $2 \
+    --name BREAKOUT_DQN_$1 \
+    --env_id Breakout \
     --number_epochs 5000 \
     --snapshot_gap 100 \
     --steps_per_batch 100 \

@@ -39,6 +39,7 @@ class CustomDQN(DQN):
         if not self._eval_env:
             self._eval_env = trainer.get_env_copy()
         last_returns = [float('nan')]
+        breakpoint()
 
         if self._min_buffer_size > self.replay_buffer.n_transitions_stored:
             num_warmup_steps = (self._min_buffer_size -
@@ -90,6 +91,7 @@ class CustomDQN(DQN):
                     agent_update=update_remote_agent_device(
                         self.exploration_policy, device='cpu')
                 )
+                x = len(trainer.step_path.observations)
                 self._times['obtain_episodes'].append(
                     time.time() - _step_start_time)
                 if hasattr(self.exploration_policy, 'update'):
@@ -169,10 +171,10 @@ class CustomDQN(DQN):
                 self._epoch_ys.append(y)
                 self._epoch_qs.append(q)
 
-        if (itr + 1) % self._steps_per_epoch == 0:
+        if itr and itr % self._steps_per_epoch == 0:
             self._log_eval_results(epoch)
 
         _copy_time_start = time.time()
-        if (itr + 1) % self._target_update_freq == 0:
+        if itr and itr % self._target_update_freq == 0:
             self._target_qf = copy.deepcopy(self._qf)
         self._times['copy'].append(time.time() - _copy_time_start)
