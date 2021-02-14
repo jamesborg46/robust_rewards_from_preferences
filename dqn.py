@@ -41,7 +41,7 @@ def dqn(ctxt,
         env = FireReset(env)
     env = Grayscale(env)
     env = Resize(env, 84, 84)
-    env = ClipReward(env)
+    # env = ClipReward(env)
     env = StackFrames(env, 4, axis=0)
     env = Renderer(env, directory=os.path.join(snapshot_dir, 'videos'))
     env = GymEnv(env, max_episode_length=kwargs['max_episode_length'])

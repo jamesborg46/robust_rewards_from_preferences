@@ -103,6 +103,7 @@ class CustomDQN(DQN):
                 trainer.step_itr += 1
 
             if epoch and epoch % self._render_freq == 0:
+                params_before = self.exploration_policy.get_param_values()
                 eval_eps = log_episodes(
                     itr=trainer.step_itr,
                     snapshot_dir=self._snapshot_dir,
@@ -112,6 +113,7 @@ class CustomDQN(DQN):
                             else self.policy),
                     capture_state=False,
                     enable_render=True)
+                self.exploration_policy.set_param_values(params_before)
 
             tabular.record('Time/TotalObtainEpisodes',
                            sum(self._times['obtain_episodes']))

@@ -2,10 +2,10 @@ python dqn.py \
     --seed 6 \
     --name INITAL_DQN_$1_$2 \
     --env_id $2 \
-    --number_epochs 1000 \
-    --snapshot_gap 200 \
-    --steps_per_batch 500 \
-    --steps_per_epoch 20 \
+    --number_epochs 5000 \
+    --snapshot_gap 100 \
+    --steps_per_batch 100 \
+    --steps_per_epoch 100 \
     --buffer_size 1000000 \
     --n_workers 10 \
     --video_fps 15 \
@@ -25,7 +25,7 @@ python dqn.py \
         total_timesteps=num_timesteps,
         max_epsilon=1.0,
         min_epsilon=0.01,
-        decay_ratio=0.1)" \
+        decay_ratio=0.05)" \
     --algo "CustomDQN(env_spec=env.spec,
                snapshot_dir=snapshot_dir,
                eval_sampler=eval_sampler,
@@ -36,13 +36,14 @@ python dqn.py \
                replay_buffer=replay_buffer,
                sampler=sampler,
                steps_per_epoch=steps_per_epoch,
-               qf_lr=1e-4,
+               qf_lr=0.00025,
+               clip_rewards=1,
                clip_gradient=10,
                discount=0.99,
-               min_buffer_size=1000,
+               min_buffer_size=50000,
                num_eval_episodes=10,
-               n_train_steps=125,
-               target_update_freq=2,
+               n_train_steps=100,
+               target_update_freq=100,
                buffer_batch_size=32)" \
     --ray \
     --use_gpu \
