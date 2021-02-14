@@ -2,6 +2,59 @@ import numpy as np
 import torch
 from collections import OrderedDict
 
+from dowel import tabular
+from garage import StepType
+from garage.np import discount_cumsum
+
+
+def log_gt_performance(itr, batch, discount, prefix='GTEvaluation'):
+    """Evaluate the performance of an algorithm on a batch of episodes.
+
+    Args:
+        itr (int): Iteration number.
+        batch (EpisodeBatch): The episodes to evaluate with.
+        discount (float): Discount value, from algorithm's property.
+        prefix (str): Prefix to add to all logged keys.
+
+    Returns:
+        numpy.ndarray: Undiscounted returns.
+
+    """
+    returns = []
+    undiscounted_returns = []
+    termination = []
+    success = []
+    corrs = []
+    for eps in batch.split():
+        returns.append(discount_cumsum(eps.env_infos['gt_reward'], discount))
+        undiscounted_returns.append(sum(eps.env_infos['gt_reward']))
+        termination.append(
+            float(
+                any(step_type == StepType.TERMINAL
+                    for step_type in eps.step_types)))
+        if 'success' in eps.env_infos:
+            success.append(float(eps.env_infos['success'].any()))
+        corrs.append(corrcoef(eps.rewards, eps.env_infos['gt_reward']))
+
+    average_discounted_return = np.mean([rtn[0] for rtn in returns])
+
+    with tabular.prefix(prefix + '/'):
+        tabular.record('Iteration', itr)
+        tabular.record('NumEpisodes', len(returns))
+
+        tabular.record('AverageDiscountedReturn', average_discounted_return)
+        tabular.record('AverageReturn', np.mean(undiscounted_returns))
+        tabular.record('StdReturn', np.std(undiscounted_returns))
+        tabular.record('MaxReturn', np.max(undiscounted_returns))
+        tabular.record('MinReturn', np.min(undiscounted_returns))
+        tabular.record('TerminationRate', np.mean(termination))
+        tabular.record('AverageEpisodeRewardCorrelation',
+                       np.mean(corrs))
+        if success:
+            tabular.record('SuccessRate', np.mean(success))
+
+    return undiscounted_returns
+
 
 def split_flattened(space, values):
     spaces = space.spaces

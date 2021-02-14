@@ -4,12 +4,11 @@ import copy
 import time
 import warnings
 
-from utils import log_episodes, update_remote_agent_device
+from utils import log_episodes, update_remote_agent_device, log_gt_performance
 
 from dowel import logger, tabular
 import numpy as np
 
-from garage import log_performance
 from garage.torch.algos import DQN
 
 
@@ -17,11 +16,13 @@ class CustomDQN(DQN):
 
     def __init__(
             self,
+            reward_predictor,
             snapshot_dir,
             eval_sampler,
             render_freq,
             **kwargs):
         super().__init__(**kwargs)
+        self._reward_predictor = reward_predictor
         self._snapshot_dir = snapshot_dir
         self._eval_sampler = eval_sampler
         self._render_freq = render_freq
@@ -51,6 +52,8 @@ class CustomDQN(DQN):
             )
             self.replay_buffer.add_episode_batch(eps)
 
+        self._reward_predictor.pretrain(trainer, eps)
+
         trainer.enable_logging = True
 
         for epoch in trainer.step_epochs():
@@ -73,14 +76,17 @@ class CustomDQN(DQN):
 
                 self.exploration_policy.set_param_values(params_before)
 
-                last_returns = log_performance(trainer.step_itr,
-                                               eval_eps,
-                                               discount=self._discount)
+                last_returns = log_gt_performance(trainer.step_itr,
+                                                  eval_eps,
+                                                  discount=self._discount)
                 self._episode_reward_mean.extend(last_returns)
                 tabular.record('Evaluation/Time',
                                time.time() - _eval_start_time)
                 tabular.record('Evaluation/100EpRewardMean',
                                np.mean(self._episode_reward_mean))
+
+                self._reward_predictor.train_once(trainer.step_itr,
+                                                  eval_eps)
 
             self._times = collections.defaultdict(list)
             for _ in range(self._steps_per_epoch):
@@ -161,6 +167,7 @@ class CustomDQN(DQN):
                         'Observation.+is outside observation_space.+')
                     timesteps = self.replay_buffer.sample_timesteps(
                         self._buffer_batch_size)
+                timesteps = self._reward_predictor.predict_rewards(timesteps)
                 qf_loss, y, q = tuple(v.cpu().numpy()
                                       for v in self._optimize_qf(timesteps))
                 self._times['step'].append(time.time() - _step_start_time)

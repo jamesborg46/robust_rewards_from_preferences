@@ -2,8 +2,7 @@
 
 from dowel import tabular
 from garage.torch.algos import TRPO
-import numpy as np
-from utils import corrcoef, log_episodes
+from utils import log_episodes, log_gt_performance
 
 
 class IrlTRPO(TRPO):
@@ -36,7 +35,7 @@ class IrlTRPO(TRPO):
             last_return = super()._train_once(itr, eps)
         self._reward_predictor.train_once(itr, eps)
 
-        self._log_performance(eps)
+        log_gt_performance(eps)
         if itr and itr % self._render_freq == 0:
             log_episodes(itr,
                          self._snapshot_dir,
@@ -45,18 +44,3 @@ class IrlTRPO(TRPO):
                          enable_render=True)
 
         return last_return
-
-    def _log_performance(self, eps):
-        undiscounted_returns = []
-        corrs = []
-        for eps in eps.split():
-            undiscounted_returns.append(sum(eps.env_infos['gt_reward']))
-            corrs.append(corrcoef(eps.rewards, eps.env_infos['gt_reward']))
-
-        with tabular.prefix('RewardPredictor/'):
-            tabular.record('AverageGTReturn', np.mean(undiscounted_returns))
-            tabular.record('StdGTReturn', np.std(undiscounted_returns))
-            tabular.record('MaxGTReturn', np.max(undiscounted_returns))
-            tabular.record('MinGTReturn', np.min(undiscounted_returns))
-            tabular.record('AverageEpisodeRewardCorrelation',
-                           np.mean(corrs))

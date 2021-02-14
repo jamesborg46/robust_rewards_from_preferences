@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from dowel import logger
 
-from garage import EpisodeBatch
+from garage import EpisodeBatch, TimeStepBatch
 from garage.torch import np_to_torch
 from garage.torch.modules import MLPModule
 from garage.torch.optimizers import OptimizerWrapper
@@ -107,11 +107,14 @@ class PrefMLP(nn.Module, RewardPredictor):
 
         return logits, preds
 
-    def pretrain(self, trainer):
+    def pretrain(self, trainer, precollected_eps=None):
         logger.log('Pretraining reward predictor...')
 
         # Acquiring trajectories
         logger.log('Acquiring pre-train episodes')
+        if precollected_eps is not None:
+            self.preference_collector.collect(precollected_eps)
+
         while not self.preference_collector.buffer_full:
             eps = trainer.obtain_episodes(itr=0)
             self.preference_collector.collect(eps)
@@ -154,30 +157,37 @@ class PrefMLP(nn.Module, RewardPredictor):
         )
         return scaled_rewards
 
-    def predict_rewards(self, itr, eps):
+    def predict_rewards(self, itr, steps):
         obs_space = self.env_spec.observation_space
-        # lengths = eps.lengths
-        # split_eps = eps.split()
 
         with torch.no_grad():
-            obs = np_to_torch(obs_space.flatten_n(eps.observations))
+            obs = np_to_torch(obs_space.flatten_n(steps.observations))
             predicted_rewards = self.forward(obs).numpy().flatten()
 
         predicted_rewards = self._scale_rewards(predicted_rewards)
-        assert len(predicted_rewards) == len(eps.observations)
+        assert len(predicted_rewards) == len(steps.observations)
 
-        return EpisodeBatch(env_spec=eps.env_spec,
-                            episode_infos=eps.episode_infos,
-                            observations=eps.observations,
-                            last_observations=eps.last_observations,
-                            actions=eps.actions,
-                            rewards=predicted_rewards,
-                            env_infos=eps.env_infos,
-                            agent_infos=eps.agent_infos,
-                            step_types=eps.step_types,
-                            lengths=eps.lengths)
-
-        # return EpisodeBatch.concatenate(*split_eps)
+        if type(steps) == EpisodeBatch:
+            return EpisodeBatch(env_spec=steps.env_spec,
+                                episode_infos=steps.episode_infos,
+                                observations=steps.observations,
+                                last_observations=steps.last_observations,
+                                actions=steps.actions,
+                                rewards=predicted_rewards,
+                                env_infos=steps.env_infos,
+                                agent_infos=steps.agent_infos,
+                                step_types=steps.step_types,
+                                lengths=steps.lengths)
+        elif type(steps) == TimeStepBatch:
+            return TimeStepBatch(env_spec=steps.env_spec,
+                                 episode_infos=steps.episode_infos,
+                                 observations=steps.observations,
+                                 next_observations=steps.next_observations,
+                                 actions=steps.actions,
+                                 rewards=predicted_rewards,
+                                 env_infos=steps.env_infos,
+                                 agent_infos=steps.agent_infos,
+                                 step_types=steps.step_types)
 
     # pylint: disable=arguments-differ
     def forward(self, obs):

@@ -53,9 +53,6 @@ def dqn(ctxt,
     num_timesteps = (kwargs['number_epochs'] * steps_per_epoch  # noqa: F841
                      * kwargs['steps_per_batch'])
 
-    replay_buffer = PathBuffer(
-        capacity_in_transitions=kwargs['buffer_size'])
-
     replay_buffer = PathBuffer(  # noqa: F841
         capacity_in_transitions=kwargs['buffer_size'])
     qf = eval(kwargs['qf'])  # noqa: F841
