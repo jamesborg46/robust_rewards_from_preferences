@@ -53,7 +53,10 @@ class IrlDQN(DQN):
             )
             self.replay_buffer.add_episode_batch(eps)
 
-        self._reward_predictor.pretrain(trainer, eps)
+        params_before = self.exploration_policy.get_param_values()
+        self._reward_predictor.pretrain(sampler=self._eval_sampler,
+                                        agent=self.exploration_policy)
+        self.exploration_policy.set_param_values(params_before)
 
         trainer.enable_logging = True
 
@@ -77,6 +80,9 @@ class IrlDQN(DQN):
 
                 self.exploration_policy.set_param_values(params_before)
 
+                eval_eps = self._reward_predictor.predict_rewards(
+                    trainer.step_itr,
+                    eval_eps)
                 last_returns = log_gt_performance(trainer.step_itr,
                                                   eval_eps,
                                                   discount=self._discount)

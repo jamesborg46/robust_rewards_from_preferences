@@ -1,4 +1,4 @@
-python dqn.py \
+python irl_dqn.py \
     --seed 6 \
     --name TEST_BREAKOUT_IRL_DQN_$1 \
     --env_id Breakout \
@@ -28,11 +28,14 @@ python dqn.py \
         decay_ratio=0.05)" \
     --label_scheduler "LabelAnnealer(number_epochs=kwargs['number_epochs'],
                                      final_labels=10000,
-                                     pretrain_labels=500)" \
+                                     # pretrain_labels=500,
+                                     pretrain_labels=10,
+                                     )" \
     --data_collector "SyntheticPreferenceCollector(env.spec,
                                                    label_scheduler,
                                                    segment_length=1,
-                                                   max_capacity=10000)" \
+                                                   max_capacity=10000,
+                                                   flatten=False)" \
     --reward_predictor "PrefCNN(env.spec,
                                 preference_collector=data_collector,
                                 hidden_channels=(32, 64, 64),
@@ -41,13 +44,16 @@ python dqn.py \
                                 hidden_w_init=(
                                     lambda x: torch.nn.init.orthogonal_(x, gain=np.sqrt(2))),
                                 hidden_sizes=(512,),
-                                pretrain_epochs=100,
-                                iterations_per_epoch=100,
+                                # pretrain_epochs=100,
+                                pretrain_epochs=10,
+                                # iterations_per_epoch=100,
+                                iterations_per_epoch=10,
                                 minibatch_size=256)" \
     --algo "IrlDQN(env_spec=env.spec,
+               reward_predictor=reward_predictor,
                snapshot_dir=snapshot_dir,
                eval_sampler=eval_sampler,
-               render_freq=100,
+               render_freq=2,
                policy=policy,
                qf=qf,
                exploration_policy=exploration_policy,
@@ -58,9 +64,12 @@ python dqn.py \
                clip_rewards=1,
                clip_gradient=10,
                discount=0.99,
-               min_buffer_size=50000,
-               num_eval_episodes=20,
-               n_train_steps=100,
+               # min_buffer_size=50000,
+               min_buffer_size=1000,
+               # num_eval_episodes=20,
+               num_eval_episodes=2,
+               # n_train_steps=100,
+               n_train_steps=10,
                target_update_freq=100,
                buffer_batch_size=32)" \
     --ray \

@@ -39,7 +39,7 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
                  is_image=True,
                  name='PrefCNNRewardPredictor'):
 
-        self.env_spec = env_spec
+        self._env_spec = env_spec
         input_shape = (1, ) + env_spec.observation_space.shape
         output_dim = 1
 
@@ -70,7 +70,7 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
         self.preference_collector = preference_collector
         self.optimizer = OptimizerWrapper(
             (torch.optim.Adam, dict(lr=learning_rate)),
-            self.module,
+            self,
             max_optimization_epochs=iterations_per_epoch,
             minibatch_size=minibatch_size,
         )
@@ -78,31 +78,32 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
     def predict_preferences(self, left, right):
         if not left.shape == right.shape:
             raise ValueError('Left and Right should have same shape')
-        assert left.ndim == 3
-        batch, timesteps, obs_dim = left.shape
+        assert left.ndim == 5
+        batch, timesteps, c, h, w = left.shape
         assert timesteps == 1  # 1 Time step per segment
 
-        left = left.reshape(batch, obs_dim)
-        right = right.reshape(batch, obs_dim)
+        left = torch.squeeze(left)
+        right = torch.squeeze(right)
 
-        left_out = self.module(left)
-        right_out = self.module(right)
+        left_out = self.forward(left)
+        right_out = self.forward(right)
         logits = torch.cat([left_out, right_out], dim=1)
         preds = torch.argmax(logits, dim=1)
 
         return logits, preds
 
-    def pretrain(self, trainer, precollected_eps=None):
+    def pretrain(self, sampler, agent):
         logger.log('Pretraining reward predictor...')
 
         # Acquiring trajectories
         logger.log('Acquiring pre-train episodes')
-        if precollected_eps is not None:
-            self.preference_collector.collect(precollected_eps)
 
-        while not self.preference_collector.buffer_full:
-            eps = trainer.obtain_episodes(itr=0)
-            self.preference_collector.collect(eps)
+        eps = sampler.obtain_samples(
+            itr=0,
+            num_samples=self.preference_collector.max_capacity,
+            agent_update=agent.get_param_values()
+        )
+        self.preference_collector.collect(eps)
 
         # Acquiring comparisons
         logger.log('Acquiring pretrain comparisons')
@@ -143,10 +144,11 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
         return scaled_rewards
 
     def predict_rewards(self, itr, steps):
-        obs_space = self.env_spec.observation_space
+        breakpoint()
 
         with torch.no_grad():
-            predicted_rewards = self.forward(obs).numpy().flatten()
+            predicted_rewards = self.forward(
+                steps.observations).numpy().flatten()
 
         predicted_rewards = self._scale_rewards(predicted_rewards)
         assert len(predicted_rewards) == len(steps.observations)

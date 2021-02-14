@@ -138,6 +138,9 @@ if __name__ == '__main__':
         kwargs['name'] + '_' + time.ctime().replace(' ', '_')
     )
 
+    if '-v' not in kwargs['env_id']:
+        kwargs['env_id'] += 'NoFrameskip-v4'
+
     experiment_dir = os.getenv('EXPERIMENT_LOGS',
                                default=os.path.join(os.getcwd(), 'experiment'))
 

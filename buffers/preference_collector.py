@@ -35,7 +35,8 @@ class PreferenceCollector(abc.ABC):
                  env_spec,
                  label_scheduler,
                  segment_length=1,
-                 max_capacity=100000):
+                 max_capacity=100000,
+                 flatten=True):
 
         self.env_spec = env_spec
         self.label_scheduler = label_scheduler
@@ -44,6 +45,7 @@ class PreferenceCollector(abc.ABC):
         self._total_steps = 0
         self._comparisons = []
         self._segment_length = segment_length
+        self._flatten = flatten
 
     def collect(self, eps):
         """
@@ -172,7 +174,11 @@ class PreferenceCollector(abc.ABC):
         return left, right, prefs
 
     def _get_model_input_from_segment(self, segment):
-        obs = self.env_spec.observation_space.flatten_n(segment.observations)
+        if self._flatten:
+            obs = self.env_spec.observation_space.flatten_n(
+                segment.observations)
+        else:
+            obs = segment.observations
         return obs
 
     def log_stats(self, itr):
