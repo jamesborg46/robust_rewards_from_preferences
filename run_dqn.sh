@@ -1,13 +1,13 @@
 python dqn.py \
     --seed 6 \
-    --name INITAL_DQN_$1_$2 \
-    --env_id $2 \
-    --number_epochs 5000 \
+    --name BREAKOUT_DQN_$1 \
+    --env_id Breakout \
+    --number_epochs 2000 \
     --snapshot_gap 100 \
     --steps_per_batch 100 \
     --steps_per_epoch 100 \
     --buffer_size 1000000 \
-    --n_workers 10 \
+    --n_workers 20 \
     --video_fps 15 \
     --qf "DiscreteCNNQFunction(
 			env_spec=env.spec,
@@ -41,7 +41,7 @@ python dqn.py \
                clip_gradient=10,
                discount=0.99,
                min_buffer_size=50000,
-               num_eval_episodes=10,
+               num_eval_episodes=20,
                n_train_steps=100,
                target_update_freq=100,
                buffer_batch_size=32)" \
