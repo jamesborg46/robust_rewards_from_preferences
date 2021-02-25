@@ -1,13 +1,12 @@
-import torch
-import numpy as np
 from dowel import tabular
+import numpy as np
+import torch
+import torch.nn.functional as F
 
 from garage import StepType
 from garage.torch.algos import SAC
 from garage.torch import dict_np_to_torch, global_device
 from garage.sampler.env_update import EnvUpdate
-
-import torch.nn.functional as F
 
 import pickle
 import os
