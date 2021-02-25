@@ -6,7 +6,7 @@ import time
 
 from algos import IrlDQN  # noqa: F401
 from buffers import SyntheticPreferenceCollector, LabelAnnealer  # noqa: F401
-from reward_predictors import PrefCNN  # noqa: F401
+from modules import PrefCNN  # noqa: F401
 from wrappers import Renderer, RewardMasker
 
 import dowel

@@ -21,7 +21,7 @@ from safety_gym.envs.engine import Engine
 from wrappers import RewardMasker, SafetyEnvStateAppender, Renderer
 from algos import IrlTRPO  # noqa: F401
 from buffers import SyntheticPreferenceCollector, LabelAnnealer  # noqa: F401
-from reward_predictors import PrefMLP  # noqa: F401
+from modules import PrefMLP  # noqa: F401
 
 import time
 import os

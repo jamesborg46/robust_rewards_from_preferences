@@ -57,6 +57,8 @@ def diversity_is_all_you_need(ctxt=None,
 
     trainer = Trainer(ctxt)
     skill_discriminator = eval(kwargs['skill_discriminator'])  # noqa: F841
+    discrminator_optimizer = eval(  # noqa: F841
+        kwargs['discrminator_optimizer'])
     policy = eval(kwargs['policy'])  # noqa: F841
     qf1 = eval(kwargs['qf'])  # noqa: F841
     qf2 = eval(kwargs['qf'])  # noqa: F841

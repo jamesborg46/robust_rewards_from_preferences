@@ -19,7 +19,7 @@ from gym.wrappers import Monitor
 from wrappers import RewardMasker, SafetyEnvStateAppender
 from algos import PreferenceTRPO
 from buffers import SyntheticComparisonCollector, HumanComparisonCollector
-from reward_predictors import MLPRewardPredictor, BNNRewardPredictor
+from modules import MLPRewardPredictor, BNNRewardPredictor
 from dowel import tabular, logger
 
 import numpy as np
