@@ -83,10 +83,10 @@ RUN apt-get update && \
 
 RUN conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
 RUN pip install Django==1.8
-RUN pip install dowel==0.0.3
-RUN pip install git+https://github.com/Indoril007/garage.git@james
+# RUN pip install dowel==0.0.3
+# RUN pip install git+https://github.com/Indoril007/garage.git@james
 RUN pip install gym\[atari\]
-RUN pip install git+https://github.com/Indoril007/dowel.git@wandb
+# RUN pip install git+https://github.com/Indoril007/dowel.git@wandb
 RUN pip install git+https://github.com/sksq96/pytorch-summary.git
 RUN pip install wandb 
 
