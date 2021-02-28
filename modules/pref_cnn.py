@@ -9,7 +9,7 @@ from garage import EpisodeBatch, TimeStepBatch
 from garage.torch import np_to_torch
 from garage.torch.modules import DiscreteCNNModule
 from garage.torch.optimizers import OptimizerWrapper
-from reward_predictors import RewardPredictor
+from modules import RewardPredictor
 
 
 class PrefCNN(DiscreteCNNModule, RewardPredictor):

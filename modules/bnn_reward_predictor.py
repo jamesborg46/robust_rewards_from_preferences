@@ -2,7 +2,7 @@
 import torch
 from torch import nn
 
-from reward_predictors.bnn import BayesianNN
+from modules.bnn import BayesianNN
 
 
 class BNNRewardPredictor(nn.Module):
