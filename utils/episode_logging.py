@@ -4,7 +4,7 @@ import os.path as osp
 import pickle
 import warnings
 
-from utils import update_remote_agent_device
+# from utils import update_remote_agent_device
 
 from garage.sampler.env_update import EnvUpdate
 import ray
@@ -108,12 +108,12 @@ def log_episodes(itr,
 
     sampler._update_workers(
         env_update=env_updates,
-        agent_update=update_remote_agent_device(policy)
+        # agent_update=update_remote_agent_device(policy)
     )
 
     episodes = sampler.obtain_exact_episodes(
         n_eps_per_worker=n_eps_per_worker,
-        agent_update=update_remote_agent_device(policy)
+        # agent_update=update_remote_agent_device(policy)
     )
 
     if enable_render:
@@ -121,7 +121,7 @@ def log_episodes(itr,
 
         updates = sampler._update_workers(
             env_update=env_updates,
-            agent_update=update_remote_agent_device(policy)
+            # agent_update=update_remote_agent_device(policy)
         )
 
         while updates:

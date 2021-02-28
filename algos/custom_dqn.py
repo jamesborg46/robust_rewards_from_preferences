@@ -4,7 +4,7 @@ import copy
 import time
 import warnings
 
-from utils import log_episodes, update_remote_agent_device
+from utils import log_episodes
 
 from dowel import logger, tabular
 import numpy as np
@@ -46,8 +46,8 @@ class CustomDQN(DQN):
             eps = trainer.obtain_episodes(
                 0,
                 num_warmup_steps,
-                agent_update=update_remote_agent_device(
-                    self.exploration_policy, device='cpu')
+                # agent_update=update_remote_agent_device(
+                #     self.exploration_policy, device='cpu')
             )
             self.replay_buffer.add_episode_batch(eps)
 
@@ -87,8 +87,8 @@ class CustomDQN(DQN):
                 _step_start_time = time.time()
                 trainer.step_path = trainer.obtain_episodes(
                     trainer.step_itr,
-                    agent_update=update_remote_agent_device(
-                        self.exploration_policy, device='cpu')
+                    # agent_update=update_remote_agent_device(
+                    #     self.exploration_policy, device='cpu')
                 )
                 self._times['obtain_episodes'].append(
                     time.time() - _step_start_time)

@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from dowel import logger
 
-from utils import update_remote_agent_device
+# from utils import update_remote_agent_device
 
 from garage import EpisodeBatch, TimeStepBatch
 from garage.torch import np_to_torch
@@ -103,7 +103,7 @@ class PrefCNN(DiscreteCNNModule, RewardPredictor):
         eps = sampler.obtain_samples(
             itr=0,
             num_samples=self.preference_collector.max_capacity,
-            agent_update=update_remote_agent_device(agent)
+            # agent_update=update_remote_agent_device(agent)
         )
         self.preference_collector.collect(eps)
 
