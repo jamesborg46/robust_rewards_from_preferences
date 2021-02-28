@@ -3,13 +3,14 @@ python diversity.py \
     --env_id Safexp-PointIRLGoalThree-v0 \
     --n_workers 2 \
     --steps_per_epoch 4000 \
-    --number_skills 5 \
+    --number_skills 4 \
     --render_freq 2 \
+    --alpha 0.5 \
     --number_epochs 1001 \
     --seed 12 \
     --max_episode_length 1000 \
     --policy "TanhGaussianMLPPolicy(
-                env=env.spec,
+                env_spec=env.spec,
                 hidden_sizes=[256, 256],
                 hidden_nonlinearity=nn.ReLU,
                 output_nonlinearity=None,
@@ -31,15 +32,15 @@ python diversity.py \
                    sampler=sampler,
                    log_sampler=log_sampler,
                    snapshot_dir=snapshot_dir,
+                   policy=policy,
                    qf1=qf1,
                    qf2=qf2,
                    discriminator=skill_discriminator,
                    replay_buffer=replay_buffer,
                    number_skills=number_skills,
-                   render_freq=2,
+                   render_freq=render_freq,
                    gradient_steps_per_itr=20,
                    fixed_alpha=alpha,
-                   render_freq=render_freq,
                    buffer_batch_size=128,
                    )" \
     --ray

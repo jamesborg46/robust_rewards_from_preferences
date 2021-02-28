@@ -33,8 +33,6 @@ class SkillDiscriminator(MLPModule):
 
         """
         super().__init__(
-            self,
-            env_spec=env_spec,
             input_dim=env_spec.observation_space['state'].flat_dim,
             output_dim=num_skills,
             **kwargs,
@@ -49,15 +47,14 @@ class SkillDiscriminator(MLPModule):
 
     def train_once(
             self,
-            samples: Dict[str, np.ndarray]):
+            samples: Dict[str, torch.Tensor]):
         """
         TODO
         """
         self._optimizer.zero_grad()
         del samples['reward']
-        samples = dict_np_to_torch(samples)
         space = self._env_spec.observation_space
-        observations = split_flattened(space, samples['observation'])
+        observations = split_flattened(space, samples['observations'])
         skills_one_hot = observations['skill']
         states = observations['state']
         skills = one_hot_to_int(skills_one_hot).to(global_device())
@@ -65,7 +62,7 @@ class SkillDiscriminator(MLPModule):
         logits = self(states)
         loss = F.nll_loss(logits, skills)
         loss.backward()
-        self._discriminator_optimizer.step()
+        self._optimizer.step()
         return loss
 
     def diversity_reward(self,
@@ -76,8 +73,8 @@ class SkillDiscriminator(MLPModule):
         """
         logits = self(np_to_torch(states))
         dist = torch.distributions.Categorical(logits=logits)
-        log_q = dist.log_prob(skills)
-        log_p = torch.log(torch.tensor(1/self.num_skills))
+        log_q = dist.log_prob(np_to_torch(skills))
+        log_p = torch.log(torch.tensor(1/self._num_skills))
         return log_q - log_p
 
     def update_diversity_rewards_in_buffer_samples(
@@ -87,7 +84,7 @@ class SkillDiscriminator(MLPModule):
         TODO
         """
         space = self._env_spec.observation_space
-        observations = split_flattened(space, samples['observation'])
+        observations = split_flattened(space, samples['observations'])
         states = observations['state']
         skills_one_hot = observations['skill']
         skills = one_hot_to_int(skills_one_hot)

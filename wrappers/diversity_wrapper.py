@@ -57,8 +57,8 @@ class DiversityWrapper(gym.Wrapper):
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
-        info['gt_reward'] = reward
+        # info['gt_reward'] = reward
         # new_obs = np.concatenate([self.skill_one_hot, obs])
         new_obs = {'state': obs, 'skill': self.skill}
-        return new_obs, None, done, info
+        return new_obs, reward, done, info
 

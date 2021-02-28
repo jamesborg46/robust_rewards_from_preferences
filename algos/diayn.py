@@ -33,7 +33,7 @@ class DIAYN(SAC):
         log_sampler : TODO
         render_freq : TODO, optional
         """
-        super().__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
         self._number_skills = number_skills
         self._discriminator = discriminator
@@ -65,8 +65,8 @@ class DIAYN(SAC):
             for _ in range(self._steps_per_epoch):
                 eps = trainer.obtain_episodes(trainer.step_itr)
                 self.replay_buffer.add_episode_batch(eps)
-                path_returns = [sum(ep.rewards for ep in eps)]
-                assert len(path_returns) == len(trainer.step_path)
+                path_returns = [sum(ep.rewards) for ep in eps.split()]
+                assert len(path_returns) == len(eps.lengths)
                 self.episode_rewards.append(np.mean(path_returns))
 
                 policy_loss, qf1_loss, qf2_loss, disc_loss = (
@@ -129,10 +129,10 @@ class DIAYN(SAC):
                 qf2_losses.append(qf2_loss)
                 disc_losses.append(disc_loss)
 
-        policy_loss = torch.cat(policy_losses).mean().item()
-        qf1_loss = torch.cat(qf1_losses).mean().item()
-        qf2_loss = torch.cat(qf2_losses).mean().item()
-        disc_loss = torch.cat(disc_losses).mean().item()
+        policy_loss = torch.stack(policy_losses).mean().item()
+        qf1_loss = torch.stack(qf1_losses).mean().item()
+        qf2_loss = torch.stack(qf2_losses).mean().item()
+        disc_loss = torch.stack(disc_losses).mean().item()
 
         return policy_loss, qf1_loss, qf2_loss, disc_loss
 
@@ -148,7 +148,7 @@ class DIAYN(SAC):
         with torch.no_grad():
             tabular.record('AlphaTemperature/mean',
                            self._log_alpha.exp().mean().item())
-        tabular.record('Policy/Loss', policy_loss.item())
+        tabular.record('Policy/Loss', policy_loss)
         tabular.record('QF/{}'.format('Qf1Loss'), float(qf1_loss))
         tabular.record('QF/{}'.format('Qf2Loss'), float(qf2_loss))
         tabular.record('DiscriminatorLoss', float(disc_loss))

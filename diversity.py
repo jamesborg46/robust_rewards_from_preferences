@@ -14,20 +14,24 @@ from garage.replay_buffer import PathBuffer  # noqa: F401
 from garage.sampler import DefaultWorker, FragmentWorker, LocalSampler, \
     RaySampler  # noqa: F401
 from garage.torch import set_gpu_mode
-from garage.torch.modules import MLPModule  # noqa: F401
 from garage.torch.policies import TanhGaussianMLPPolicy  # noqa: F401
 from garage.torch.q_functions import ContinuousMLPQFunction  # noqa: F401
 from garage.trainer import Trainer
 
 import gym
 
+import numpy as np  # noqa: F401
+
 import safety_gym  # noqa: F401
 from safety_gym.envs.engine import Engine
 
 import torch
+from torch import nn  # nowa: F401
+import torch.nn.functional as F  # nowa: F401
 
 from algos import DIAYN  # noqa: F401
 import envs.custom_safety_envs  # noqa: F401
+from modules import SkillDiscriminator
 from wrappers import DiversityWrapper, SafetyEnvStateAppender, Renderer
 
 
@@ -36,6 +40,10 @@ def diversity_is_all_you_need(ctxt=None,
                               ):
 
     kwargs['number_epochs'] += 1
+    number_skills=kwargs['number_skills']
+    render_freq=kwargs['render_freq']
+    alpha=kwargs['alpha']
+    number_skills=kwargs['number_skills']
 
     snapshot_dir = ctxt.snapshot_dir
     env = gym.make(kwargs['env_id'])
@@ -48,7 +56,7 @@ def diversity_is_all_you_need(ctxt=None,
             json.dump(config, outfile)
 
     env.metadata['render.modes'] = ['rgb_array']
-    env = DiversityWrapper(env, number_skills=kwargs['number_skills'])
+    env = DiversityWrapper(env, number_skills=number_skills)
     env = SafetyEnvStateAppender(env)
     env = Renderer(env, directory=os.path.join(snapshot_dir, 'videos'))
     env = GymEnv(env, max_episode_length=kwargs['max_episode_length'])
