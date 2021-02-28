@@ -92,14 +92,14 @@ def corrcoef(dist_a, dist_b):
     return np.corrcoef(dist_a, dist_b)[0, 1]
 
 
-def update_remote_agent_device(policy, device='cpu'):
-    params = policy.get_param_values()
-    if 'inner_params' in params.keys():
-        params['inner_params'] = OrderedDict(
-            [(k, v.to(device)) for k, v in params['inner_params'].items()]
-        )
-    else:
-        params = OrderedDict(
-            [(k, v.to(device)) for k, v in params.items()]
-        )
-    return params
+# def update_remote_agent_device(policy, device='cpu'):
+#     params = policy.get_param_values()
+#     if 'inner_params' in params.keys():
+#         params['inner_params'] = OrderedDict(
+#             [(k, v.to(device)) for k, v in params['inner_params'].items()]
+#         )
+#     else:
+#         params = OrderedDict(
+#             [(k, v.to(device)) for k, v in params.items()]
+#         )
+#     return params

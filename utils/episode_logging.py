@@ -33,9 +33,36 @@ class EnvConfigUpdate(EnvUpdate):
         return old_env
 
 
+class SkillEnvUpdate(EnvConfigUpdate):
+    """
+    Updates environments wrapped with Renderer and DiversityWrapper Classes.
+
+    It ensures that  skills are set appropriately on rollouts in order to
+    visualize all skills.
+    """
+
+    def __init__(self,
+                 skill_mode='consecutive',
+                 skill=None,
+                 **kwargs):
+        """TODO: to be defined. """
+        super().__init__(self, **kwargs)
+        self._skill_mode = skill_mode
+        self._skill = skill
+
+    def __call__(self, old_env):
+        if not hasattr(old_env, 'skill'):
+            raise Exception('Attempting to update skills on an env without the'
+                            'capaability to do so')
+        super().__call__()
+        old_env.set_skill_mode(self._skill_mode)
+        old_env.set_skill(self._skill)
+
+
 class CloseRenderer(EnvUpdate):
 
     def __call__(self, old_env):
+        old_env.enable_rendering(False)
         old_env.close_renderer()
         return old_env
 
@@ -46,9 +73,13 @@ def log_episodes(itr,
                  policy,
                  number_eps=None,
                  capture_state=True,
-                 enable_render=False):
+                 enable_render=False,
+                 number_skills=None):
 
     n_workers = sampler._worker_factory.n_workers
+
+    if number_skills:
+        skills_per_worker = int(number_skills / n_workers)
 
     if number_eps is None:
         n_eps_per_worker = 1
@@ -58,12 +89,22 @@ def log_episodes(itr,
         n_eps_per_worker = math.ceil(number_eps / n_workers)
 
     env_updates = []
-    for i in range(n_workers):
-        env_updates.append(EnvConfigUpdate(
-            capture_state=capture_state,
-            enable_render=enable_render,
-            file_prefix=f"epoch_{itr:04}_worker_{i:02}"
-        ))
+
+    if number_skills is None:
+        for i in range(n_workers):
+            env_updates.append(EnvConfigUpdate(
+                capture_state=capture_state,
+                enable_render=enable_render,
+                file_prefix=f"epoch_{itr:04}_worker_{i:02}"
+            ))
+    else:
+        for i in range(n_workers):
+            env_updates.append(SkillEnvUpdate(
+                capture_state=capture_state,
+                enable_render=enable_render,
+                skill=i*skills_per_worker,
+                file_prefix=f"epoch_{itr:04}_worker_{i:02}"
+            ))
 
     sampler._update_workers(
         env_update=env_updates,

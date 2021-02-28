@@ -1,17 +1,20 @@
-"""MLP Reward Predictor"""
-import torch
-from torch import nn
+"""MLP Reward Predictor."""
 from dowel import logger
 
 from garage import EpisodeBatch, TimeStepBatch
 from garage.torch import np_to_torch
 from garage.torch.modules import MLPModule
 from garage.torch.optimizers import OptimizerWrapper
-from reward_predictors import RewardPredictor
+
+import torch
+from torch import nn
+
+from modules import RewardPredictor
 
 
 class PrefMLP(nn.Module, RewardPredictor):
     """Gaussian MLP Value Function with Model.
+
     It fits the input data to a gaussian distribution estimated by
     a MLP.
     Args:

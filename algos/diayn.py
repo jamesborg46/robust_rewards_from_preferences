@@ -1,31 +1,29 @@
 from dowel import tabular
+
 import numpy as np
+
 import torch
-import torch.nn.functional as F
 
-from garage import StepType
 from garage.torch.algos import SAC
-from garage.torch import dict_np_to_torch, global_device
-from garage.sampler.env_update import EnvUpdate
+from garage.torch import dict_np_to_torch
 
-import pickle
-import os
-import os.path as osp
-from utils import split_flattened, one_hot_to_int, update_remote_agent_device
+from modules import SkillDiscriminator
+from utils.episode_logging import log_episodes
 
 
 class DIAYN(SAC):
-    """Docstring for DIAYN. """
+    """Docstring for DIAYN."""
 
     def __init__(self,
-                 number_skills,
-                 discriminator,
+                 number_skills: int,
+                 discriminator: SkillDiscriminator,
                  snapshot_dir,
                  log_sampler,
                  render_freq=200,
                  **kwargs
                  ):
-        """TODO: to be defined.
+        """
+        TODO: to be defined.
 
         Parameters
         ----------
@@ -34,10 +32,7 @@ class DIAYN(SAC):
         snapshot_dir : TODO
         log_sampler : TODO
         render_freq : TODO, optional
-
-
         """
-
         super().__init__(self, **kwargs)
 
         self._number_skills = number_skills
@@ -46,3 +41,118 @@ class DIAYN(SAC):
         self._log_sampler = log_sampler
         self._render_freq = render_freq
 
+    def train(self, trainer):
+        """Obtain samplers and start actual training for each epoch.
+
+        Args:
+            trainer (Trainer): Gives the algorithm the access to
+                :method:`~Trainer.step_epochs()`, which provides services
+                such as snapshotting and sampler control.
+
+        Returns:
+            float: The average return in last epoch cycle.
+
+        """
+        if not self._eval_env:
+            self._eval_env = trainer.get_env_copy()
+
+        batch_size = int(self._min_buffer_size)
+        eps = trainer.obtain_episodes(trainer.step_itr, batch_size)
+        self.replay_buffer.add_episode_batch(eps)
+
+        last_return = None
+        for _ in trainer.step_epochs():
+            for _ in range(self._steps_per_epoch):
+                eps = trainer.obtain_episodes(trainer.step_itr)
+                self.replay_buffer.add_episode_batch(eps)
+                path_returns = [sum(ep.rewards for ep in eps)]
+                assert len(path_returns) == len(trainer.step_path)
+                self.episode_rewards.append(np.mean(path_returns))
+
+                policy_loss, qf1_loss, qf2_loss, disc_loss = (
+                    self.train_once(trainer.step_itr)
+                )
+
+            last_return = self._evaluate_policy(trainer.step_itr)
+            self._log_statistics(policy_loss, qf1_loss, qf2_loss, disc_loss)
+            tabular.record('TotalEnvSteps', trainer.total_env_steps)
+
+            trainer.step_itr += 1
+
+            if trainer.step_itr % self._render_freq == 0:
+                log_episodes(trainer.step_itr,
+                             self._snapshot_dir,
+                             self._log_sampler,
+                             self.policy,
+                             enable_render=True,
+                             number_skills=self._number_skills)
+
+        return np.mean(last_return)
+
+    def train_once(self, itr, paths=None):
+        """Complectes 1 training iteration of DIAYN
+
+        Parameters
+        ----------
+        itr : TODO, optional
+        paths : TODO, optional
+
+        Returns
+        -------
+        TODO
+
+        """
+        del paths
+
+        policy_losses = []
+        qf1_losses = []
+        qf2_losses = []
+        disc_losses = []
+
+        for i in range(self._gradient_steps):
+            if self.replay_buffer.n_transitions_stored >= self._min_buffer_size:
+                samples = self.replay_buffer.sample_transitions(
+                    self._buffer_batch_size)
+
+                samples = (
+                    self._discriminator
+                    .update_diversity_rewards_in_buffer_samples(samples)
+                )
+
+                samples = dict_np_to_torch(samples)
+                policy_loss, qf1_loss, qf2_loss = self.optimize_policy(samples)
+                self._update_targets()
+                disc_loss = self._discriminator.train_once(samples)
+
+                policy_losses.append(policy_loss)
+                qf1_losses.append(qf1_loss)
+                qf2_losses.append(qf2_loss)
+                disc_losses.append(disc_loss)
+
+        policy_loss = torch.cat(policy_losses).mean().item()
+        qf1_loss = torch.cat(qf1_losses).mean().item()
+        qf2_loss = torch.cat(qf2_losses).mean().item()
+        disc_loss = torch.cat(disc_losses).mean().item()
+
+        return policy_loss, qf1_loss, qf2_loss, disc_loss
+
+    def _log_statistics(self, policy_loss, qf1_loss, qf2_loss, disc_loss):
+        """Record training statistics to dowel such as losses and returns.
+
+        Args:
+            policy_loss (torch.Tensor): loss from actor/policy network.
+            qf1_loss (torch.Tensor): loss from 1st qf/critic network.
+            qf2_loss (torch.Tensor): loss from 2nd qf/critic network.
+
+        """
+        with torch.no_grad():
+            tabular.record('AlphaTemperature/mean',
+                           self._log_alpha.exp().mean().item())
+        tabular.record('Policy/Loss', policy_loss.item())
+        tabular.record('QF/{}'.format('Qf1Loss'), float(qf1_loss))
+        tabular.record('QF/{}'.format('Qf2Loss'), float(qf2_loss))
+        tabular.record('DiscriminatorLoss', float(disc_loss))
+        tabular.record('ReplayBuffer/buffer_size',
+                       self.replay_buffer.n_transitions_stored)
+        tabular.record('Average/TrainAverageReturn',
+                       np.mean(self.episode_rewards))

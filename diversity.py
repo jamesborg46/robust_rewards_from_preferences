@@ -6,23 +6,25 @@ import time
 
 import dowel
 from dowel import logger
-import gym
-import numpy as np
-import safety_gym  # noqa: F401
-from safety_gym.envs.engine import Engine
-import torch
 
 from garage import wrap_experiment
 from garage.envs import GymEnv
 from garage.experiment.deterministic import set_seed
 from garage.replay_buffer import PathBuffer  # noqa: F401
-from garage.sampler import LocalSampler, RaySampler, \
-    DefaultWorker  # noqa: F401
+from garage.sampler import DefaultWorker, FragmentWorker, LocalSampler, \
+    RaySampler  # noqa: F401
 from garage.torch import set_gpu_mode
+from garage.torch.modules import MLPModule  # noqa: F401
 from garage.torch.policies import TanhGaussianMLPPolicy  # noqa: F401
 from garage.torch.q_functions import ContinuousMLPQFunction  # noqa: F401
-from garage.torch.modules import MLPModule  # noqa: F401
 from garage.trainer import Trainer
+
+import gym
+
+import safety_gym  # noqa: F401
+from safety_gym.envs.engine import Engine
+
+import torch
 
 from algos import DIAYN  # noqa: F401
 import envs.custom_safety_envs  # noqa: F401
@@ -57,8 +59,6 @@ def diversity_is_all_you_need(ctxt=None,
 
     trainer = Trainer(ctxt)
     skill_discriminator = eval(kwargs['skill_discriminator'])  # noqa: F841
-    discrminator_optimizer = eval(  # noqa: F841
-        kwargs['discrminator_optimizer'])
     policy = eval(kwargs['policy'])  # noqa: F841
     qf1 = eval(kwargs['qf'])  # noqa: F841
     qf2 = eval(kwargs['qf'])  # noqa: F841
@@ -73,11 +73,15 @@ def diversity_is_all_you_need(ctxt=None,
     sampler = Sampler(agents=policy,  # noqa: F841
                       envs=env,
                       max_episode_length=kwargs['max_episode_length'],
-                      n_workers=kwargs['n_workers'])
+                      n_workers=kwargs['n_workers'],
+                      worker_class=FragmentWorker,
+                      worker_args={'n_envs': 4})
+
     log_sampler = Sampler(agents=policy,  # noqa: F841
                           envs=env,
                           max_episode_length=kwargs['max_episode_length'],
-                          n_workers=kwargs['n_workers'])
+                          n_workers=kwargs['n_workers'],
+                          worker_class=DefaultWorker)
 
     diayn = eval(kwargs['diayn'])
 
@@ -109,6 +113,11 @@ if __name__ == '__main__':
     parser.add_argument('--use_gpu', action='store_true', required=False)
     parser.add_argument('--gpu_id', type=int, default=0)
 
+    parser.add_argument('--skill_discriminator', type=str, required=True)
+    parser.add_argument('--policy', type=str, required=True)
+    parser.add_argument('--qf', type=str, required=True)
+    parser.add_argument('--replay_buffer', type=str, required=True)
+    parser.add_argument('--diayn', type=str, required=True)
     torch.set_num_threads(4)
 
     kwargs = vars(parser.parse_args())

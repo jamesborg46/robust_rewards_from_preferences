@@ -26,7 +26,6 @@ class DiversityWrapper(gym.Wrapper):
         if skill_mode not in ['random', 'consecutive', 'constant']:
             raise ValueError("skill_mode must be 'random', 'consecutive' or"
                              "constant")
-
         self.skill_mode = skill_mode
 
     def set_skill(self, skill):
