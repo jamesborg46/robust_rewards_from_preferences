@@ -85,6 +85,7 @@ class DIAYN(SAC):
                              self._log_sampler,
                              self.policy,
                              enable_render=True,
+                             capture_state=True,
                              number_skills=self._number_skills)
 
         return np.mean(last_return)

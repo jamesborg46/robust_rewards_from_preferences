@@ -72,7 +72,7 @@ class Renderer(gym.Wrapper):
         name = self.file_prefix
         skill = self.metadata.get('skill')
         if skill is not None:
-            name = name + f'skill_{skill:02}'
+            name = name + f'_skill_{skill:02}_'
         self.names[name] += 1
 
         ep_id = self.names[name]

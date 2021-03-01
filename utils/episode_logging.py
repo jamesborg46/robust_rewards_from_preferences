@@ -46,7 +46,7 @@ class SkillEnvUpdate(EnvConfigUpdate):
                  skill=None,
                  **kwargs):
         """TODO: to be defined. """
-        super().__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self._skill_mode = skill_mode
         self._skill = skill
 
@@ -54,15 +54,14 @@ class SkillEnvUpdate(EnvConfigUpdate):
         if not hasattr(old_env, 'skill'):
             raise Exception('Attempting to update skills on an env without the'
                             'capaability to do so')
-        super().__call__()
+        super().__call__(old_env)
         old_env.set_skill_mode(self._skill_mode)
         old_env.set_skill(self._skill)
-
+        return old_env
 
 class CloseRenderer(EnvUpdate):
 
     def __call__(self, old_env):
-        old_env.enable_rendering(False)
         old_env.close_renderer()
         return old_env
 
@@ -82,8 +81,9 @@ def log_episodes(itr,
         skills_per_worker = int(number_skills / n_workers)
 
     if number_eps is None:
-        n_eps_per_worker = 1
+        n_eps_per_worker = skills_per_worker or 1
     else:
+        number_eps *= skills_per_worker or 1
         if not number_eps % n_workers == 0:
             warnings.warn('Episodes unevenly split amongst workers')
         n_eps_per_worker = math.ceil(number_eps / n_workers)
@@ -108,12 +108,12 @@ def log_episodes(itr,
 
     sampler._update_workers(
         env_update=env_updates,
-        # agent_update=update_remote_agent_device(policy)
+        agent_update=policy
     )
 
     episodes = sampler.obtain_exact_episodes(
         n_eps_per_worker=n_eps_per_worker,
-        # agent_update=update_remote_agent_device(policy)
+        agent_update=policy
     )
 
     if enable_render:
@@ -121,7 +121,7 @@ def log_episodes(itr,
 
         updates = sampler._update_workers(
             env_update=env_updates,
-            # agent_update=update_remote_agent_device(policy)
+            agent_update=policy
         )
 
         while updates:
