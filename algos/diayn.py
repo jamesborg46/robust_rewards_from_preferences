@@ -8,7 +8,7 @@ from garage.torch.algos import SAC
 from garage.torch import dict_np_to_torch
 
 from modules import SkillDiscriminator
-from utils.episode_logging import log_episodes
+from utils import log_episodes, profile
 
 
 class DIAYN(SAC):
@@ -63,17 +63,27 @@ class DIAYN(SAC):
         last_return = None
         for _ in trainer.step_epochs():
             for _ in range(self._steps_per_epoch):
-                eps = trainer.obtain_episodes(trainer.step_itr)
+                eps = profile(
+                    'ObtainEpisodes',
+                    trainer.obtain_episodes,
+                    trainer.step_itr)
+
                 self.replay_buffer.add_episode_batch(eps)
                 path_returns = [sum(ep.rewards) for ep in eps.split()]
                 assert len(path_returns) == len(eps.lengths)
                 self.episode_rewards.append(np.mean(path_returns))
 
-                policy_loss, qf1_loss, qf2_loss, disc_loss = (
-                    self.train_once(trainer.step_itr)
+                policy_loss, qf1_loss, qf2_loss, disc_loss = profile(
+                    'TrainOnce',
+                    self.train_once,
+                    trainer.step_itr
                 )
 
-            last_return = self._evaluate_policy(trainer.step_itr)
+            last_return = profile(
+                'EvaluatePolicy',
+                self._evaluate_policy,
+                trainer.step_itr)
+
             self._log_statistics(policy_loss, qf1_loss, qf2_loss, disc_loss)
             tabular.record('TotalEnvSteps', trainer.total_env_steps)
 

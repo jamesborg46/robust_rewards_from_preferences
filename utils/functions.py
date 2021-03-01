@@ -1,10 +1,33 @@
+import time
+
 import numpy as np
 import torch
-from collections import OrderedDict
 
 from dowel import tabular
 from garage import StepType
 from garage.np import discount_cumsum
+
+
+def profile(label, func, *args, prefix='Profile', **kwargs):
+    """This function is a wrapper to profile the given function
+
+    Parameters
+    ----------
+    func : TODO
+    args : TODO
+    label : TODO
+
+    Returns
+    -------
+    TODO
+
+    """
+    start = time.time()
+    ret = func(*args, **kwargs)
+    runtime = time.time() - start
+    with tabular.prefix(prefix + '/'):
+        tabular.record(label+'Time', runtime)
+    return ret
 
 
 def log_gt_performance(itr, batch, discount, prefix='GTEvaluation'):
