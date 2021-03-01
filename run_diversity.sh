@@ -1,5 +1,5 @@
 python diversity.py \
-    --name NEW_DIAYN_0 \
+    --name DIAYN_2 \
     --env_id Safexp-PointIRLGoalThree-v0 \
     --n_workers 8 \
     --steps_per_epoch 16000 \
@@ -23,7 +23,7 @@ python diversity.py \
     --skill_discriminator "SkillDiscriminator(
                                 env_spec=env.spec,
                                 num_skills=number_skills,
-                                learning_rate=0.001,
+                                learning_rate=0.0001,
                                 hidden_sizes=[256, 256],
                                 hidden_nonlinearity=nn.ReLU,
                                 output_nonlinearity=None)" \
