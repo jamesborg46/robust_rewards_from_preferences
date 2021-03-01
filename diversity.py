@@ -12,7 +12,7 @@ from garage.envs import GymEnv
 from garage.experiment.deterministic import set_seed
 from garage.replay_buffer import PathBuffer  # noqa: F401
 from garage.sampler import DefaultWorker, FragmentWorker, LocalSampler, \
-    RaySampler  # noqa: F401
+    RaySampler, WorkerFactory  # noqa: F401
 from garage.torch import set_gpu_mode
 from garage.torch.policies import TanhGaussianMLPPolicy  # noqa: F401
 from garage.torch.q_functions import ContinuousMLPQFunction  # noqa: F401
@@ -26,12 +26,12 @@ import safety_gym  # noqa: F401
 from safety_gym.envs.engine import Engine
 
 import torch
-from torch import nn  # nowa: F401
-import torch.nn.functional as F  # nowa: F401
+from torch import nn  # noqa: F401
+import torch.nn.functional as F  # noqa: F401
 
 from algos import DIAYN  # noqa: F401
 import envs.custom_safety_envs  # noqa: F401
-from modules import SkillDiscriminator
+from modules import SkillDiscriminator  # noqa: F401
 from wrappers import DiversityWrapper, SafetyEnvStateAppender, Renderer
 
 
@@ -40,10 +40,10 @@ def diversity_is_all_you_need(ctxt=None,
                               ):
 
     kwargs['number_epochs'] += 1
-    number_skills=kwargs['number_skills']
-    render_freq=kwargs['render_freq']
-    alpha=kwargs['alpha']
-    number_skills=kwargs['number_skills']
+    number_skills = kwargs['number_skills']
+    render_freq = kwargs['render_freq']  # noqa: F841
+    alpha = kwargs['alpha']  # noqa: F841
+    number_skills = kwargs['number_skills']
 
     snapshot_dir = ctxt.snapshot_dir
     env = gym.make(kwargs['env_id'])
@@ -78,18 +78,26 @@ def diversity_is_all_you_need(ctxt=None,
         set_gpu_mode(False)
 
     Sampler = RaySampler if kwargs['ray'] else LocalSampler
-    sampler = Sampler(agents=policy,  # noqa: F841
-                      envs=env,
-                      max_episode_length=kwargs['max_episode_length'],
-                      n_workers=kwargs['n_workers'],
-                      worker_class=FragmentWorker,
-                      worker_args={'n_envs': 4})
+    sampler = Sampler(  # noqa: F841
+        agents=policy,
+        envs=env,
+        worker_factory=WorkerFactory(
+            max_episode_length=kwargs['max_episode_length'],
+            n_workers=kwargs['n_workers'],
+            worker_class=FragmentWorker,
+            worker_args={'n_envs': 4},
+            device='cpu'),
+    )
 
-    log_sampler = Sampler(agents=policy,  # noqa: F841
-                          envs=env,
-                          max_episode_length=kwargs['max_episode_length'],
-                          n_workers=kwargs['n_workers'],
-                          worker_class=DefaultWorker)
+    log_sampler = Sampler(  # noqa: F841
+        agents=policy,
+        envs=env,
+        worker_factory=WorkerFactory(
+            max_episode_length=kwargs['max_episode_length'],
+            n_workers=kwargs['n_workers'],
+            worker_class=DefaultWorker,
+            device='cpu'),
+    )
 
     diayn = eval(kwargs['diayn'])
 

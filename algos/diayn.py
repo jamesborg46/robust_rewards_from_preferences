@@ -157,3 +157,17 @@ class DIAYN(SAC):
                        self.replay_buffer.n_transitions_stored)
         tabular.record('Average/TrainAverageReturn',
                        np.mean(self.episode_rewards))
+
+    @property
+    def networks(self):
+        """Return all the networks within the model.
+
+        Returns:
+            list: A list of networks.
+
+        """
+        return [
+            self.policy, self._qf1, self._qf2, self._target_qf1,
+            self._target_qf2, self._discriminator
+        ]
+
