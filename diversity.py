@@ -84,8 +84,8 @@ def diversity_is_all_you_need(ctxt=None,
         worker_factory=WorkerFactory(
             max_episode_length=kwargs['max_episode_length'],
             n_workers=kwargs['n_workers'],
-            worker_class=FragmentWorker,
-            worker_args={'n_envs': 4},
+            worker_class=DefaultWorker,
+            # worker_args={'n_envs': 4},
             device='cpu'),
     )
 

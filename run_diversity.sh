@@ -1,11 +1,11 @@
 python diversity.py \
-    --name DIAYN_3_smaller_alpha \
+    --name DIAYN_4_DEFAULT_WORKER \
     --env_id Safexp-PointIRLGoalThree-v0 \
     --n_workers 8 \
     --steps_per_epoch 16000 \
     --number_skills 24 \
     --render_freq 250 \
-    --alpha 0.05 \
+    --alpha 0.5 \
     --number_epochs 1001 \
     --seed 12 \
     --max_episode_length 1000 \
