@@ -1,11 +1,11 @@
 python diversity.py \
-    --name DIAYN_2 \
+    --name DIAYN_3_smaller_alpha \
     --env_id Safexp-PointIRLGoalThree-v0 \
     --n_workers 8 \
     --steps_per_epoch 16000 \
     --number_skills 24 \
     --render_freq 250 \
-    --alpha 0.5 \
+    --alpha 0.05 \
     --number_epochs 1001 \
     --seed 12 \
     --max_episode_length 1000 \
@@ -23,7 +23,7 @@ python diversity.py \
     --skill_discriminator "SkillDiscriminator(
                                 env_spec=env.spec,
                                 num_skills=number_skills,
-                                learning_rate=0.0001,
+                                learning_rate=0.001,
                                 hidden_sizes=[256, 256],
                                 hidden_nonlinearity=nn.ReLU,
                                 output_nonlinearity=None)" \
