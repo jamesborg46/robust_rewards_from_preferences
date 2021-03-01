@@ -1,10 +1,10 @@
 python diversity.py \
-    --name WANDB_LOGGING_TEST \
+    --name NEW_DIAYN_0 \
     --env_id Safexp-PointIRLGoalThree-v0 \
-    --n_workers 2 \
-    --steps_per_epoch 4000 \
-    --number_skills 4 \
-    --render_freq 2 \
+    --n_workers 8 \
+    --steps_per_epoch 16000 \
+    --number_skills 24 \
+    --render_freq 250 \
     --alpha 0.5 \
     --number_epochs 1001 \
     --seed 12 \
@@ -39,7 +39,7 @@ python diversity.py \
                    replay_buffer=replay_buffer,
                    number_skills=number_skills,
                    render_freq=render_freq,
-                   gradient_steps_per_itr=20,
+                   gradient_steps_per_itr=50,
                    fixed_alpha=alpha,
                    buffer_batch_size=128,
                    )" \
