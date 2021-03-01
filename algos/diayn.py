@@ -4,6 +4,7 @@ import numpy as np
 
 import torch
 
+from garage import log_performance
 from garage.torch.algos import SAC
 from garage.torch import dict_np_to_torch
 
@@ -61,7 +62,7 @@ class DIAYN(SAC):
         self.replay_buffer.add_episode_batch(eps)
 
         last_return = None
-        for _ in trainer.step_epochs():
+        for epoch in trainer.step_epochs():
             for _ in range(self._steps_per_epoch):
                 eps = profile(
                     'ObtainEpisodes',
@@ -79,10 +80,10 @@ class DIAYN(SAC):
                     trainer.step_itr
                 )
 
-            last_return = profile(
-                'EvaluatePolicy',
-                self._evaluate_policy,
-                trainer.step_itr)
+            # last_return = profile(
+            #     'EvaluatePolicy',
+            #     self._evaluate_policy,
+            #     trainer.step_itr)
 
             self._log_statistics(policy_loss, qf1_loss, qf2_loss, disc_loss)
             tabular.record('TotalEnvSteps', trainer.total_env_steps)
@@ -90,13 +91,31 @@ class DIAYN(SAC):
             trainer.step_itr += 1
 
             if trainer.step_itr % self._render_freq == 0:
-                log_episodes(trainer.step_itr,
-                             self._snapshot_dir,
-                             self._log_sampler,
-                             self.policy,
-                             enable_render=True,
-                             capture_state=True,
-                             number_skills=self._number_skills)
+                eval_episodes = log_episodes(
+                    trainer.step_itr,
+                    self._snapshot_dir,
+                    self._log_sampler,
+                    self.policy,
+                    enable_render=True,
+                    capture_state=True,
+                    number_skills=self._number_skills)
+            else:
+                eval_episodes = log_episodes(
+                    trainer.step_itr,
+                    self._snapshot_dir,
+                    self._log_sampler,
+                    self.policy,
+                    enable_render=False,
+                    capture_state=False,
+                    number_skills=self._number_skills)
+
+            last_return = log_performance(
+                epoch,
+                eval_episodes,
+                discount=self._discount)
+
+            self._log_statistics(policy_loss, qf1_loss, qf2_loss, disc_loss)
+            tabular.record('TotalEnvSteps', trainer.total_env_steps)
 
         return np.mean(last_return)
 
