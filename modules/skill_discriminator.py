@@ -60,7 +60,7 @@ class SkillDiscriminator(MLPModule):
         skills = one_hot_to_int(skills_one_hot).to(global_device())
 
         logits = self(states)
-        loss = F.nll_loss(logits, skills)
+        loss = F.cross_entropy(logits, skills)
         loss.backward()
         self._optimizer.step()
         return loss
