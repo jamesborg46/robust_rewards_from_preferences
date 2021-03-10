@@ -21,6 +21,7 @@ class DIAYN(SAC):
                  snapshot_dir,
                  log_sampler,
                  render_freq=200,
+                 val_freq=10,
                  **kwargs
                  ):
         """
@@ -33,6 +34,7 @@ class DIAYN(SAC):
         snapshot_dir : TODO
         log_sampler : TODO
         render_freq : TODO, optional
+        val_freq : TODO, optional
         """
         super().__init__(**kwargs)
 
@@ -41,6 +43,7 @@ class DIAYN(SAC):
         self._snapshot_dir = snapshot_dir
         self._log_sampler = log_sampler
         self._render_freq = render_freq
+        self._val_freq = val_freq
 
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
@@ -80,11 +83,6 @@ class DIAYN(SAC):
                     trainer.step_itr
                 )
 
-            # last_return = profile(
-            #     'EvaluatePolicy',
-            #     self._evaluate_policy,
-            #     trainer.step_itr)
-
             self._log_statistics(policy_loss, qf1_loss, qf2_loss, disc_loss)
             tabular.record('TotalEnvSteps', trainer.total_env_steps)
 
@@ -99,7 +97,7 @@ class DIAYN(SAC):
                     enable_render=True,
                     capture_state=True,
                     number_skills=self._number_skills)
-            else:
+            elif trainer.step_itr % self._val_freq == 0:
                 eval_episodes = log_episodes(
                     trainer.step_itr,
                     self._snapshot_dir,
@@ -109,10 +107,10 @@ class DIAYN(SAC):
                     capture_state=False,
                     number_skills=self._number_skills)
 
-            last_return = log_performance(
-                epoch,
-                eval_episodes,
-                discount=self._discount)
+                last_return = log_performance(
+                    epoch,
+                    eval_episodes,
+                    discount=self._discount)
 
             self._log_statistics(policy_loss, qf1_loss, qf2_loss, disc_loss)
             tabular.record('TotalEnvSteps', trainer.total_env_steps)
