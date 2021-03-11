@@ -1,15 +1,15 @@
 python diversity.py \
-    --name WANDB_LOGGING_TEST \
+    --name TEST_OTHER_BRANCH \
     --env_id Safexp-PointIRLGoalThree-v0 \
-    --n_workers 2 \
-    --batch_size 2000 \
-    --number_skills 2 \
+    --n_workers 8 \
+    --batch_size 16000 \
+    --number_skills 24 \
     --number_epochs 1001 \
     --seed 12 \
     --max_episode_length 1000 \
     --render_freq 200 \
-    --alpha 0.5 
-    # --ray 
+    --alpha 0.5 \
+    --ray 
     # --use_gpu \
     # --gpu_id $1
 # python diversity.py \

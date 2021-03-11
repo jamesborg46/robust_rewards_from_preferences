@@ -22,6 +22,7 @@ from garage.torch.modules import MLPModule
 from wrappers import DiversityWrapper, SafetyEnvStateAppender, Renderer
 from algos import DIAYN
 
+import copy
 import json
 import time
 import argparse
@@ -137,6 +138,7 @@ def diversity_is_all_you_need(ctxt=None,
 
     trainer.eval_sampler_setup(
         sampler_cls=sampler,
+        eval_env=copy.deepcopy(env),
         n_workers=n_workers,
         worker_class=DefaultWorker,
     )
