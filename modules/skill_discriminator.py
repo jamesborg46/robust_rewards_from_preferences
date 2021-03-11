@@ -52,7 +52,7 @@ class SkillDiscriminator(MLPModule):
         TODO
         """
         self._optimizer.zero_grad()
-        del samples['reward']
+        del samples['rewards']
         space = self._env_spec.observation_space
         observations = split_flattened(space, samples['observations'])
         skills_one_hot = observations['skill']
@@ -92,7 +92,8 @@ class SkillDiscriminator(MLPModule):
         with torch.no_grad():
             rewards = self.diversity_reward(states, skills).cpu().numpy()
 
-        samples['reward'] = rewards.reshape((-1, 1))
+        assert 'rewards' in samples.keys()
+        samples['rewards'] = rewards.reshape((-1, 1))
         return samples
 
     def forward(self, observations):
